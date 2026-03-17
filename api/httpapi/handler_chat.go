@@ -1,7 +1,9 @@
 package httpapi
 
 import (
+	"context"
 	"net/http"
+	"os"
 
 	httpapi "github.com/atMagicW/go-agent-runtime/api/sse"
 	"github.com/gin-gonic/gin"
@@ -40,7 +42,21 @@ func ChatHandler(c *gin.Context) {
 		Stream:    req.Stream,
 	}
 
-	agentService := app.NewAgentService()
+	pgDSN := os.Getenv("POSTGRES_DSN")
+	if pgDSN == "" {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "POSTGRES_DSN is not set",
+		})
+		return
+	}
+
+	agentService, err := app.BuildDefaultAgentService(context.Background(), pgDSN)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
 
 	if req.Stream {
 		httpapi.StreamResponse(c, func(writer *httpapi.StreamWriter) {

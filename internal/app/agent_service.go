@@ -6,6 +6,7 @@ import (
 
 	"github.com/atMagicW/go-agent-runtime/api/sse"
 	memrepo "github.com/atMagicW/go-agent-runtime/internal/adapters/persistence/memory"
+	"github.com/atMagicW/go-agent-runtime/internal/adapters/persistence/postgres"
 	promptrepo "github.com/atMagicW/go-agent-runtime/internal/adapters/prompt"
 	"github.com/atMagicW/go-agent-runtime/internal/domain/agent"
 	agentgov "github.com/atMagicW/go-agent-runtime/internal/usecase/governance"
@@ -17,12 +18,13 @@ import (
 
 // AgentService 是 Agent 运行时服务入口
 type AgentService struct {
-	orchestrator  *agentruntime.Orchestrator
-	promptService *PromptService
+	orchestrator   *agentruntime.Orchestrator
+	promptService  *PromptService
+	sessionService *SessionService
 }
 
 // NewAgentService 创建 AgentService
-func NewAgentService() *AgentService {
+func NewAgentService(sessionService *SessionService) *AgentService {
 	intentEngine := agentintent.NewEngine()
 	planner := agentplanner.NewPlanner()
 
@@ -32,9 +34,7 @@ func NewAgentService() *AgentService {
 
 	modelUsageRepo := memrepo.NewModelUsageRepository()
 	auditRepo := memrepo.NewAuditRepository()
-	promptRepository := promptrepo.NewInMemoryRepository()
-
-	_ = promptRepository // 先初始化，下一轮会接到 response composer
+	_ = promptrepo.NewInMemoryRepository()
 
 	costTracker := agentgov.NewCostTracker(modelUsageRepo)
 	auditLogger := agentgov.NewAuditLogger(auditRepo)
@@ -54,8 +54,22 @@ func NewAgentService() *AgentService {
 	)
 
 	return &AgentService{
-		orchestrator: orchestrator,
+		orchestrator:   orchestrator,
+		sessionService: sessionService,
 	}
+}
+
+// BuildDefaultAgentService 构建默认 AgentService
+func BuildDefaultAgentService(ctx context.Context, pgDSN string) (*AgentService, error) {
+	db, err := postgres.NewDB(ctx, pgDSN)
+	if err != nil {
+		return nil, err
+	}
+
+	sessionRepo := postgres.NewSessionRepository(db)
+	sessionService := NewSessionService(sessionRepo)
+
+	return NewAgentService(sessionService), nil
 }
 
 // Run 非流式执行
@@ -64,26 +78,62 @@ func (s *AgentService) Run(
 	message string,
 ) (*agent.FinalResponse, error) {
 	baseCtx := context.Background()
-	// TODO:
-	// 1. 构建上下文
-	// 2. 意图识别
-	// 3. 生成计划
-	// 4. 执行计划
-	// 5. 返回最终回复
 
 	ctx, cancel := context.WithTimeout(baseCtx, 30*time.Second)
 	defer cancel()
 
-	runtimeCtx := agent.RuntimeContext{
-		Request: reqCtx,
-		Conversation: agent.ConversationState{
-			SessionID: reqCtx.SessionID,
-		},
-		Variables: map[string]any{},
+	// 1. 确保会话存在
+	if err := s.sessionService.EnsureSession(ctx, reqCtx.SessionID, reqCtx.UserID); err != nil {
+		return nil, err
 	}
 
+	// 2. 保存用户消息
+	if err := s.sessionService.SaveUserMessage(ctx, reqCtx.SessionID, message); err != nil {
+		return nil, err
+	}
+
+	// 3. 加载历史会话状态
+	conversationState, err := s.sessionService.LoadConversationState(ctx, reqCtx.SessionID)
+	if err != nil {
+		return nil, err
+	}
+
+	runtimeCtx := agent.RuntimeContext{
+		Request:      reqCtx,
+		Conversation: conversationState,
+		Variables:    conversationState.Variables,
+	}
+	if runtimeCtx.Variables == nil {
+		runtimeCtx.Variables = map[string]any{}
+	}
+
+	// 4. 执行主链路
 	resp, _, err := s.orchestrator.Run(ctx, runtimeCtx, message)
 	if err != nil {
+		return nil, err
+	}
+
+	// 5. 保存助手回复
+	if err := s.sessionService.SaveAssistantMessage(ctx, reqCtx.SessionID, resp.Message); err != nil {
+		return nil, err
+	}
+
+	// 6. 保存最新会话状态
+	conversationState.Messages = append(conversationState.Messages,
+		agent.Message{
+			Role:      "user",
+			Content:   message,
+			CreatedAt: time.Now(),
+		},
+		agent.Message{
+			Role:      "assistant",
+			Content:   resp.Message,
+			CreatedAt: time.Now(),
+		},
+	)
+	conversationState.Variables = runtimeCtx.Variables
+
+	if err := s.sessionService.SaveConversationState(ctx, conversationState); err != nil {
 		return nil, err
 	}
 
@@ -101,12 +151,29 @@ func (s *AgentService) RunStream(
 	ctx, cancel := context.WithTimeout(baseCtx, 30*time.Second)
 	defer cancel()
 
+	if err := s.sessionService.EnsureSession(ctx, reqCtx.SessionID, reqCtx.UserID); err != nil {
+		writer.WriteEvent("error", err.Error())
+		return
+	}
+
+	if err := s.sessionService.SaveUserMessage(ctx, reqCtx.SessionID, message); err != nil {
+		writer.WriteEvent("error", err.Error())
+		return
+	}
+
+	conversationState, err := s.sessionService.LoadConversationState(ctx, reqCtx.SessionID)
+	if err != nil {
+		writer.WriteEvent("error", err.Error())
+		return
+	}
+
 	runtimeCtx := agent.RuntimeContext{
-		Request: reqCtx,
-		Conversation: agent.ConversationState{
-			SessionID: reqCtx.SessionID,
-		},
-		Variables: map[string]any{},
+		Request:      reqCtx,
+		Conversation: conversationState,
+		Variables:    conversationState.Variables,
+	}
+	if runtimeCtx.Variables == nil {
+		runtimeCtx.Variables = map[string]any{}
 	}
 
 	writer.WriteEvent("plan", "starting orchestrator")
@@ -123,6 +190,30 @@ func (s *AgentService) RunStream(
 		} else {
 			writer.WriteEvent("step_error", result.StepID+":"+result.Error)
 		}
+	}
+
+	if err := s.sessionService.SaveAssistantMessage(ctx, reqCtx.SessionID, resp.Message); err != nil {
+		writer.WriteEvent("error", err.Error())
+		return
+	}
+
+	conversationState.Messages = append(conversationState.Messages,
+		agent.Message{
+			Role:      "user",
+			Content:   message,
+			CreatedAt: time.Now(),
+		},
+		agent.Message{
+			Role:      "assistant",
+			Content:   resp.Message,
+			CreatedAt: time.Now(),
+		},
+	)
+	conversationState.Variables = runtimeCtx.Variables
+
+	if err := s.sessionService.SaveConversationState(ctx, conversationState); err != nil {
+		writer.WriteEvent("error", err.Error())
+		return
 	}
 
 	writer.WriteToken(resp.Message)
