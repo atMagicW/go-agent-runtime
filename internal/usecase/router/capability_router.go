@@ -25,8 +25,8 @@ func (r *CapabilityRouter) Invoke(
 ) (ports.CapabilityCallResponse, error) {
 	return ports.CapabilityCallResponse{
 		Output: map[string]any{
-			"name":   req.Name,
-			"result": fmt.Sprintf("capability %s executed", req.Name),
+			"capability_name": req.Name,
+			"result":          fmt.Sprintf("capability %s executed", req.Name),
 		},
 	}, nil
 }

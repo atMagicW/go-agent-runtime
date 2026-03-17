@@ -29,9 +29,11 @@ func (r *ModelRouter) Generate(
 	text := fmt.Sprintf("model=%s response for task=%s", selectedModel, req.TaskType)
 
 	return ports.ModelCallResponse{
-		Text:   text,
-		Tokens: 128,
-		Cost:   0.0021,
+		Text:     text,
+		Tokens:   128,
+		Cost:     0.0021,
+		Model:    selectedModel,
+		Provider: "mock",
 	}, nil
 }
 

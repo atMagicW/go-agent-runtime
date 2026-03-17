@@ -16,9 +16,13 @@ type ModelCallRequest struct {
 
 // ModelCallResponse 表示模型调用结果
 type ModelCallResponse struct {
-	Text   string
+	Text string
+
 	Tokens int
 	Cost   float64
+
+	Model    string
+	Provider string
 }
 
 // ModelRouter 定义多模型路由接口

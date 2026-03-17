@@ -10,11 +10,27 @@ import (
 	"github.com/atMagicW/go-agent-runtime/internal/ports"
 )
 
+// AuditLogger 定义审计记录接口，避免 usecase 之间强耦合
+type AuditLogger interface {
+	Log(
+		ctx context.Context,
+		reqCtx agent.RequestContext,
+		intent agent.IntentResult,
+		plan agent.ExecutionPlan,
+		results []agent.StepResult,
+		finalResp agent.FinalResponse,
+		startedAt time.Time,
+		status string,
+	) error
+}
+
 // Orchestrator 是 Agent 运行时编排器
 type Orchestrator struct {
 	intentEngine ports.IntentEngine
 	planner      ports.Planner
 	executor     ports.Executor
+
+	auditLogger AuditLogger
 }
 
 // NewOrchestrator 创建编排器
@@ -22,11 +38,13 @@ func NewOrchestrator(
 	intentEngine ports.IntentEngine,
 	planner ports.Planner,
 	executor ports.Executor,
+	auditLogger AuditLogger,
 ) *Orchestrator {
 	return &Orchestrator{
 		intentEngine: intentEngine,
 		planner:      planner,
 		executor:     executor,
+		auditLogger:  auditLogger,
 	}
 }
 
@@ -36,6 +54,8 @@ func (o *Orchestrator) Run(
 	runtimeCtx agent.RuntimeContext,
 	message string,
 ) (agent.FinalResponse, []agent.StepResult, error) {
+	startedAt := time.Now()
+
 	intentResult, err := o.intentEngine.Recognize(ctx, runtimeCtx, message)
 	if err != nil {
 		return agent.FinalResponse{}, nil, err
@@ -50,7 +70,24 @@ func (o *Orchestrator) Run(
 
 	results, err := o.executor.ExecutePlan(ctx, runtimeCtx, plan)
 	if err != nil {
-		return agent.FinalResponse{}, results, err
+		finalResp := agent.FinalResponse{
+			Message: "execution failed",
+		}
+
+		if o.auditLogger != nil {
+			_ = o.auditLogger.Log(
+				ctx,
+				runtimeCtx.Request,
+				intentResult,
+				plan,
+				results,
+				finalResp,
+				startedAt,
+				"failed",
+			)
+		}
+
+		return finalResp, results, err
 	}
 
 	finalText := "execution completed"
@@ -72,20 +109,52 @@ func (o *Orchestrator) Run(
 		}
 	}
 
-	return agent.FinalResponse{
+	finalResp := agent.FinalResponse{
 		Message: finalText,
 		Cost:    totalCost,
 		Tokens:  totalTokens,
-	}, results, nil
+	}
+
+	if o.auditLogger != nil {
+		_ = o.auditLogger.Log(
+			ctx,
+			runtimeCtx.Request,
+			intentResult,
+			plan,
+			results,
+			finalResp,
+			startedAt,
+			"succeeded",
+		)
+	}
+
+	return finalResp, results, nil
 }
 
 // ------------------------------------------------------------------
+
+// CostTracker 定义成本跟踪接口
+type CostTracker interface {
+	Track(
+		ctx context.Context,
+		requestID string,
+		sessionID string,
+		provider string,
+		modelName string,
+		promptTokens int,
+		completionTokens int,
+		cost float64,
+		latencyMS int64,
+	) error
+}
 
 // PlanExecutor 是第一版执行器
 type PlanExecutor struct {
 	modelRouter      ports.ModelRouter
 	capabilityRouter ports.CapabilityRouter
 	ragRouter        ports.RAGRouter
+
+	costTracker CostTracker
 }
 
 // NewPlanExecutor 创建执行器
@@ -93,11 +162,13 @@ func NewPlanExecutor(
 	modelRouter ports.ModelRouter,
 	capabilityRouter ports.CapabilityRouter,
 	ragRouter ports.RAGRouter,
+	costTracker CostTracker,
 ) *PlanExecutor {
 	return &PlanExecutor{
 		modelRouter:      modelRouter,
 		capabilityRouter: capabilityRouter,
 		ragRouter:        ragRouter,
+		costTracker:      costTracker,
 	}
 }
 
@@ -271,11 +342,26 @@ func (e *PlanExecutor) executeStep(
 
 		result.Success = true
 		result.Output = map[string]any{
-			"text":   resp.Text,
-			"tokens": resp.Tokens,
-			"cost":   resp.Cost,
+			"text":     resp.Text,
+			"tokens":   resp.Tokens,
+			"cost":     resp.Cost,
+			"model":    resp.Model,
+			"provider": resp.Provider,
 		}
 		result.EndedAt = time.Now()
+		if e.costTracker != nil {
+			_ = e.costTracker.Track(
+				stepCtx,
+				runtimeCtx.Request.RequestID,
+				runtimeCtx.Request.SessionID,
+				resp.Provider,
+				resp.Model,
+				64, // 第一版先写 mock prompt tokens
+				resp.Tokens-64,
+				resp.Cost,
+				time.Since(start).Milliseconds(),
+			)
+		}
 		return result
 
 	case "capability_router":
@@ -320,7 +406,8 @@ func (e *PlanExecutor) executeStep(
 
 		result.Success = true
 		result.Output = map[string]any{
-			"evidences": resp.Evidences,
+			"knowledge_base": kb,
+			"evidences":      resp.Evidences,
 		}
 		result.EndedAt = time.Now()
 		return result
