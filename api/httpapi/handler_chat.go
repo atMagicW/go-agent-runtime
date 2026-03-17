@@ -41,12 +41,12 @@ func (h *Handler) ChatHandler(c *gin.Context) {
 
 	if req.Stream {
 		httpapi.StreamResponse(c, func(writer *httpapi.StreamWriter) {
-			h.AgentService.RunStream(reqCtx, req.Message, writer)
+			h.agentService.RunStream(reqCtx, req.Message, writer)
 		})
 		return
 	}
 
-	resp, err := h.AgentService.Run(reqCtx, req.Message)
+	resp, err := h.agentService.Run(reqCtx, req.Message)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": err.Error(),
