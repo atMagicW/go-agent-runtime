@@ -30,7 +30,8 @@ type Orchestrator struct {
 	planner      ports.Planner
 	executor     ports.Executor
 
-	auditLogger AuditLogger
+	responseComposer ports.ResponseComposer
+	auditLogger      AuditLogger
 }
 
 // NewOrchestrator 创建编排器
@@ -38,13 +39,15 @@ func NewOrchestrator(
 	intentEngine ports.IntentEngine,
 	planner ports.Planner,
 	executor ports.Executor,
+	responseComposer ports.ResponseComposer,
 	auditLogger AuditLogger,
 ) *Orchestrator {
 	return &Orchestrator{
-		intentEngine: intentEngine,
-		planner:      planner,
-		executor:     executor,
-		auditLogger:  auditLogger,
+		intentEngine:     intentEngine,
+		planner:          planner,
+		executor:         executor,
+		responseComposer: responseComposer,
+		auditLogger:      auditLogger,
 	}
 }
 
@@ -90,16 +93,12 @@ func (o *Orchestrator) Run(
 		return finalResp, results, err
 	}
 
-	finalText := "execution completed"
 	totalCost := 0.0
 	totalTokens := 0
 
 	for _, result := range results {
 		if !result.Success {
 			continue
-		}
-		if text, ok := result.Output["text"].(string); ok && text != "" {
-			finalText = text
 		}
 		if cost, ok := result.Output["cost"].(float64); ok {
 			totalCost += cost
@@ -110,9 +109,26 @@ func (o *Orchestrator) Run(
 	}
 
 	finalResp := agent.FinalResponse{
-		Message: finalText,
+		Message: "execution completed",
 		Cost:    totalCost,
 		Tokens:  totalTokens,
+	}
+
+	if o.responseComposer != nil {
+		composed, composeErr := o.responseComposer.Compose(
+			ctx,
+			runtimeCtx,
+			ports.ComposeRequest{
+				Message:     message,
+				PromptName:  "final_response",
+				StepResults: results,
+			},
+		)
+		if composeErr == nil {
+			finalResp.Message = composed.Text
+			finalResp.Cost += composed.Cost
+			finalResp.Tokens += composed.Tokens
+		}
 	}
 
 	if o.auditLogger != nil {
@@ -148,11 +164,12 @@ type CostTracker interface {
 	) error
 }
 
-// PlanExecutor 是第一版执行器
+// PlanExecutor 执行器
 type PlanExecutor struct {
 	modelRouter      ports.ModelRouter
 	capabilityRouter ports.CapabilityRouter
 	ragRouter        ports.RAGRouter
+	responseComposer ports.ResponseComposer
 
 	costTracker CostTracker
 }
@@ -162,12 +179,14 @@ func NewPlanExecutor(
 	modelRouter ports.ModelRouter,
 	capabilityRouter ports.CapabilityRouter,
 	ragRouter ports.RAGRouter,
+	responseComposer ports.ResponseComposer,
 	costTracker CostTracker,
 ) *PlanExecutor {
 	return &PlanExecutor{
 		modelRouter:      modelRouter,
 		capabilityRouter: capabilityRouter,
 		ragRouter:        ragRouter,
+		responseComposer: responseComposer,
 		costTracker:      costTracker,
 	}
 }
@@ -411,7 +430,30 @@ func (e *PlanExecutor) executeStep(
 		}
 		result.EndedAt = time.Now()
 		return result
+	case "response_composer":
+		message, _ := step.Input["message"].(string)
 
+		resp, err := e.responseComposer.Compose(stepCtx, runtimeCtx, ports.ComposeRequest{
+			Message:     message,
+			PromptName:  "final_response",
+			StepResults: flattenCompletedResults(completed),
+		})
+		if err != nil {
+			result.Success = false
+			result.Error = err.Error()
+			result.EndedAt = time.Now()
+			return result
+		}
+
+		result.Success = true
+		result.Output = map[string]any{
+			"text":   resp.Text,
+			"tokens": resp.Tokens,
+			"cost":   resp.Cost,
+			"model":  resp.Model,
+		}
+		result.EndedAt = time.Now()
+		return result
 	default:
 		result.Success = false
 		result.Error = "unknown executor: " + step.Executor
@@ -439,4 +481,13 @@ func (e *PlanExecutor) buildModelPrompt(
 	}
 
 	return prompt
+}
+
+// flattenCompletedResults 将 completed map 转成切片
+func flattenCompletedResults(completed map[string]agent.StepResult) []agent.StepResult {
+	out := make([]agent.StepResult, 0, len(completed))
+	for _, r := range completed {
+		out = append(out, r)
+	}
+	return out
 }

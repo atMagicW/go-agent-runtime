@@ -7,10 +7,12 @@ import (
 	httpapi "github.com/atMagicW/go-agent-runtime/api/sse"
 	memrepo "github.com/atMagicW/go-agent-runtime/internal/adapters/persistence/memory"
 	_ "github.com/atMagicW/go-agent-runtime/internal/adapters/prompt"
+	promptrepo "github.com/atMagicW/go-agent-runtime/internal/adapters/prompt"
 	"github.com/atMagicW/go-agent-runtime/internal/domain/agent"
 	agentgov "github.com/atMagicW/go-agent-runtime/internal/usecase/governance"
 	agentintent "github.com/atMagicW/go-agent-runtime/internal/usecase/intent"
 	agentplanner "github.com/atMagicW/go-agent-runtime/internal/usecase/planner"
+	agentresponse "github.com/atMagicW/go-agent-runtime/internal/usecase/response"
 	agentrouter "github.com/atMagicW/go-agent-runtime/internal/usecase/router"
 	agentruntime "github.com/atMagicW/go-agent-runtime/internal/usecase/runtime"
 )
@@ -33,14 +35,17 @@ func NewAgentService(sessionService *SessionService) *AgentService {
 
 	modelUsageRepo := memrepo.NewModelUsageRepository()
 	auditRepo := memrepo.NewAuditRepository()
+	promptRepository := promptrepo.NewInMemoryRepository()
 
 	costTracker := agentgov.NewCostTracker(modelUsageRepo)
 	auditLogger := agentgov.NewAuditLogger(auditRepo)
+	responseComposer := agentresponse.NewTemplateResponseComposer(promptRepository)
 
 	executor := agentruntime.NewPlanExecutor(
 		modelRouter,
 		capabilityRouter,
 		ragRouter,
+		responseComposer,
 		costTracker,
 	)
 
@@ -48,6 +53,7 @@ func NewAgentService(sessionService *SessionService) *AgentService {
 		intentEngine,
 		planner,
 		executor,
+		responseComposer,
 		auditLogger,
 	)
 
