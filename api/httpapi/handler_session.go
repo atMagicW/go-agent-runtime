@@ -3,39 +3,19 @@ package httpapi
 import (
 	"context"
 	"net/http"
-	"os"
+	"time"
 
 	"github.com/gin-gonic/gin"
-
-	pgrepo "github.com/atMagicW/go-agent-runtime/internal/adapters/persistence/postgres"
-	"github.com/atMagicW/go-agent-runtime/internal/app"
 )
 
 // GetSessionHandler 获取会话详情
-func GetSessionHandler(c *gin.Context) {
+func (h *Handler) GetSessionHandler(c *gin.Context) {
 	sessionID := c.Param("id")
 
-	pgDSN := os.Getenv("POSTGRES_DSN")
-	if pgDSN == "" {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "POSTGRES_DSN is not set",
-		})
-		return
-	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
-	db, err := pgrepo.NewDB(context.Background(), pgDSN)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": err.Error(),
-		})
-		return
-	}
-	defer db.Close()
-
-	sessionRepo := pgrepo.NewSessionRepository(db)
-	sessionService := app.NewSessionService(sessionRepo)
-
-	state, err := sessionService.LoadConversationState(context.Background(), sessionID)
+	state, err := h.SessionService.LoadConversationState(ctx, sessionID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
 			"error": err.Error(),
@@ -43,7 +23,7 @@ func GetSessionHandler(c *gin.Context) {
 		return
 	}
 
-	session, err := sessionService.GetSession(context.Background(), sessionID)
+	session, err := h.SessionService.GetSession(ctx, sessionID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
 			"error": err.Error(),

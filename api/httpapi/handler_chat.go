@@ -1,15 +1,12 @@
 package httpapi
 
 import (
-	"context"
 	"net/http"
-	"os"
 
 	httpapi "github.com/atMagicW/go-agent-runtime/api/sse"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	"github.com/atMagicW/go-agent-runtime/internal/app"
 	"github.com/atMagicW/go-agent-runtime/internal/domain/agent"
 )
 
@@ -23,7 +20,7 @@ type ChatRequest struct {
 }
 
 // ChatHandler 是 Agent 主入口
-func ChatHandler(c *gin.Context) {
+func (h *Handler) ChatHandler(c *gin.Context) {
 	var req ChatRequest
 	if err := c.BindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -42,30 +39,14 @@ func ChatHandler(c *gin.Context) {
 		Stream:    req.Stream,
 	}
 
-	pgDSN := os.Getenv("POSTGRES_DSN")
-	if pgDSN == "" {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "POSTGRES_DSN is not set",
-		})
-		return
-	}
-
-	agentService, err := app.BuildDefaultAgentService(context.Background(), pgDSN)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": err.Error(),
-		})
-		return
-	}
-
 	if req.Stream {
 		httpapi.StreamResponse(c, func(writer *httpapi.StreamWriter) {
-			agentService.RunStream(reqCtx, req.Message, writer)
+			h.AgentService.RunStream(reqCtx, req.Message, writer)
 		})
 		return
 	}
 
-	resp, err := agentService.Run(reqCtx, req.Message)
+	resp, err := h.AgentService.Run(reqCtx, req.Message)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": err.Error(),

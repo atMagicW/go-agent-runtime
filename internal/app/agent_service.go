@@ -4,10 +4,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/atMagicW/go-agent-runtime/api/sse"
+	httpapi "github.com/atMagicW/go-agent-runtime/api/sse"
 	memrepo "github.com/atMagicW/go-agent-runtime/internal/adapters/persistence/memory"
-	"github.com/atMagicW/go-agent-runtime/internal/adapters/persistence/postgres"
-	promptrepo "github.com/atMagicW/go-agent-runtime/internal/adapters/prompt"
+	_ "github.com/atMagicW/go-agent-runtime/internal/adapters/prompt"
 	"github.com/atMagicW/go-agent-runtime/internal/domain/agent"
 	agentgov "github.com/atMagicW/go-agent-runtime/internal/usecase/governance"
 	agentintent "github.com/atMagicW/go-agent-runtime/internal/usecase/intent"
@@ -18,8 +17,8 @@ import (
 
 // AgentService 是 Agent 运行时服务入口
 type AgentService struct {
-	orchestrator   *agentruntime.Orchestrator
-	promptService  *PromptService
+	orchestrator *agentruntime.Orchestrator
+	//promptService  *PromptService
 	sessionService *SessionService
 }
 
@@ -34,7 +33,6 @@ func NewAgentService(sessionService *SessionService) *AgentService {
 
 	modelUsageRepo := memrepo.NewModelUsageRepository()
 	auditRepo := memrepo.NewAuditRepository()
-	_ = promptrepo.NewInMemoryRepository()
 
 	costTracker := agentgov.NewCostTracker(modelUsageRepo)
 	auditLogger := agentgov.NewAuditLogger(auditRepo)
@@ -57,19 +55,6 @@ func NewAgentService(sessionService *SessionService) *AgentService {
 		orchestrator:   orchestrator,
 		sessionService: sessionService,
 	}
-}
-
-// BuildDefaultAgentService 构建默认 AgentService
-func BuildDefaultAgentService(ctx context.Context, pgDSN string) (*AgentService, error) {
-	db, err := postgres.NewDB(ctx, pgDSN)
-	if err != nil {
-		return nil, err
-	}
-
-	sessionRepo := postgres.NewSessionRepository(db)
-	sessionService := NewSessionService(sessionRepo)
-
-	return NewAgentService(sessionService), nil
 }
 
 // Run 非流式执行
@@ -119,18 +104,6 @@ func (s *AgentService) Run(
 	}
 
 	// 6. 保存最新会话状态
-	conversationState.Messages = append(conversationState.Messages,
-		agent.Message{
-			Role:      "user",
-			Content:   message,
-			CreatedAt: time.Now(),
-		},
-		agent.Message{
-			Role:      "assistant",
-			Content:   resp.Message,
-			CreatedAt: time.Now(),
-		},
-	)
 	conversationState.Variables = runtimeCtx.Variables
 
 	if err := s.sessionService.SaveConversationState(ctx, conversationState); err != nil {
@@ -197,18 +170,6 @@ func (s *AgentService) RunStream(
 		return
 	}
 
-	conversationState.Messages = append(conversationState.Messages,
-		agent.Message{
-			Role:      "user",
-			Content:   message,
-			CreatedAt: time.Now(),
-		},
-		agent.Message{
-			Role:      "assistant",
-			Content:   resp.Message,
-			CreatedAt: time.Now(),
-		},
-	)
 	conversationState.Variables = runtimeCtx.Variables
 
 	if err := s.sessionService.SaveConversationState(ctx, conversationState); err != nil {

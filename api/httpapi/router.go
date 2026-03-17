@@ -2,14 +2,26 @@ package httpapi
 
 import "github.com/gin-gonic/gin"
 
-// RegisterRoutes 注册所有HTTP接口
-func RegisterRoutes(r *gin.Engine) {
+// Handler 统一承载 HTTP 层依赖
+type Handler struct {
+	agentService   AgentService
+	sessionService SessionService
+}
 
+// NewHandler 创建 HTTP Handler
+func NewHandler(agentService AgentService, sessionService SessionService) *Handler {
+	return &Handler{
+		agentService:   agentService,
+		sessionService: sessionService,
+	}
+}
+
+// RegisterRoutes 注册 HTTP 路由
+func RegisterRoutes(r *gin.Engine, h *Handler) {
 	v1 := r.Group("/v1")
-
 	{
-		//v1.POST("/chat", ChatHandler)
-		v1.Any("/chat", ChatHandler)
-		//v1.GET("/sessions/:id", GetSessionHandler)
+		v1.GET("/health", h.HealthHandler)
+		v1.POST("/chat", h.ChatHandler)
+		v1.GET("/sessions/:id", h.GetSessionHandler)
 	}
 }
