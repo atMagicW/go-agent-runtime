@@ -6,7 +6,6 @@ import (
 
 	httpapi "github.com/atMagicW/go-agent-runtime/api/sse"
 	memrepo "github.com/atMagicW/go-agent-runtime/internal/adapters/persistence/memory"
-	_ "github.com/atMagicW/go-agent-runtime/internal/adapters/prompt"
 	promptrepo "github.com/atMagicW/go-agent-runtime/internal/adapters/prompt"
 	"github.com/atMagicW/go-agent-runtime/internal/domain/agent"
 	agentgov "github.com/atMagicW/go-agent-runtime/internal/usecase/governance"
@@ -19,8 +18,7 @@ import (
 
 // AgentService 是 Agent 运行时服务入口
 type AgentService struct {
-	orchestrator *agentruntime.Orchestrator
-	//promptService  *PromptService
+	orchestrator   *agentruntime.Orchestrator
 	sessionService *SessionService
 }
 
