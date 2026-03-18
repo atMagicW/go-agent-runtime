@@ -8,6 +8,7 @@ import (
 	memrepo "github.com/atMagicW/go-agent-runtime/internal/adapters/persistence/memory"
 	promptrepo "github.com/atMagicW/go-agent-runtime/internal/adapters/prompt"
 	"github.com/atMagicW/go-agent-runtime/internal/domain/agent"
+	"github.com/atMagicW/go-agent-runtime/internal/ports"
 	agentgov "github.com/atMagicW/go-agent-runtime/internal/usecase/governance"
 	agentintent "github.com/atMagicW/go-agent-runtime/internal/usecase/intent"
 	agentplanner "github.com/atMagicW/go-agent-runtime/internal/usecase/planner"
@@ -22,12 +23,21 @@ type AgentService struct {
 	sessionService *SessionService
 }
 
+// capabilityRegistry 是本文件用到的最小能力注册接口
+type capabilityRegistry interface {
+	Get(name string) (ports.Capability, bool)
+}
+
 // NewAgentService 创建 AgentService
-func NewAgentService(sessionService *SessionService, modelRouter *agentrouter.ModelRouter) *AgentService {
+func NewAgentService(
+	sessionService *SessionService,
+	modelRouter *agentrouter.ModelRouter,
+	registry capabilityRegistry,
+) *AgentService {
 	intentEngine := agentintent.NewEngine()
 	planner := agentplanner.NewPlanner()
 
-	capabilityRouter := agentrouter.NewCapabilityRouter()
+	capabilityRouter := agentrouter.NewCapabilityRouter(registry)
 	ragRouter := agentrouter.NewRAGRouter()
 
 	modelUsageRepo := memrepo.NewModelUsageRepository()

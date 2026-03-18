@@ -9,6 +9,9 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/atMagicW/go-agent-runtime/api/httpapi"
+	capregistry "github.com/atMagicW/go-agent-runtime/internal/adapters/capability"
+	"github.com/atMagicW/go-agent-runtime/internal/adapters/capability/skills"
+	"github.com/atMagicW/go-agent-runtime/internal/adapters/capability/tools"
 	openaiadapter "github.com/atMagicW/go-agent-runtime/internal/adapters/llm/openai"
 	pgrepo "github.com/atMagicW/go-agent-runtime/internal/adapters/persistence/postgres"
 	"github.com/atMagicW/go-agent-runtime/internal/app"
@@ -44,14 +47,17 @@ func main() {
 
 	// 初始化 LLM clients
 	openAIClient := openaiadapter.NewClient(openAIKey)
-
 	llmClients := map[string]ports.LLMClient{
 		"openai": openAIClient,
 	}
-
 	modelRouter := agentrouter.NewModelRouter(llmClients)
 
-	agentService := app.NewAgentService(sessionService, modelRouter)
+	// 初始化本地能力注册表
+	registry := capregistry.NewRegistry()
+	registry.MustRegister(skills.NewResumeAnalyzerSkill())
+	registry.MustRegister(tools.NewKeywordExtractTool())
+
+	agentService := app.NewAgentService(sessionService, modelRouter, registry)
 
 	handler := httpapi.NewHandler(agentService, sessionService)
 

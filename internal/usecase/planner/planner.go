@@ -2,6 +2,7 @@ package planner
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -74,7 +75,7 @@ func (p *Planner) BuildPlan(
 				RetryPolicy: agent.RetryPolicy{MaxRetries: 2},
 				Status:      agent.StepStatusPending,
 				Input: map[string]any{
-					"name":    "default_skill",
+					"name":    pickCapabilityName(message),
 					"message": message,
 				},
 			},
@@ -135,7 +136,7 @@ func (p *Planner) BuildPlan(
 				RetryPolicy: agent.RetryPolicy{MaxRetries: 2},
 				Status:      agent.StepStatusPending,
 				Input: map[string]any{
-					"name":    "default_skill",
+					"name":    pickCapabilityName(message),
 					"message": message,
 				},
 			},
@@ -172,4 +173,15 @@ func (p *Planner) BuildPlan(
 	}
 
 	return plan, nil
+}
+
+func pickCapabilityName(message string) string {
+	lower := strings.ToLower(message)
+
+	switch {
+	case strings.Contains(lower, "关键词"), strings.Contains(lower, "keyword"):
+		return "keyword_extract_tool"
+	default:
+		return "resume_analyzer"
+	}
 }

@@ -6,13 +6,13 @@ import (
 	"github.com/atMagicW/go-agent-runtime/internal/domain/agent"
 )
 
-// CapabilityCallRequest 表示 Skill / MCP 调用请求
+// CapabilityCallRequest 表示 Skill / Tool / MCP 调用请求
 type CapabilityCallRequest struct {
 	Name  string
 	Input map[string]any
 }
 
-// CapabilityCallResponse 表示 Skill / MCP 调用响应
+// CapabilityCallResponse 表示能力调用响应
 type CapabilityCallResponse struct {
 	Output map[string]any
 }

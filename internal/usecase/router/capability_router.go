@@ -8,25 +8,48 @@ import (
 	"github.com/atMagicW/go-agent-runtime/internal/ports"
 )
 
-// CapabilityRouter 是第一版 Skill / MCP 路由器
+// CapabilityRouter 是 Skill / Tool / MCP 的统一路由器
 type CapabilityRouter struct {
+	registry portsCapabilityRegistry
+}
+
+// portsCapabilityRegistry 是本文件内最小依赖抽象
+type portsCapabilityRegistry interface {
+	Get(name string) (ports.Capability, bool)
 }
 
 // NewCapabilityRouter 创建能力路由器
-func NewCapabilityRouter() *CapabilityRouter {
-	return &CapabilityRouter{}
+func NewCapabilityRouter(registry portsCapabilityRegistry) *CapabilityRouter {
+	return &CapabilityRouter{
+		registry: registry,
+	}
 }
 
 // Invoke 调用能力
 func (r *CapabilityRouter) Invoke(
-	_ context.Context,
+	ctx context.Context,
 	_ agent.RuntimeContext,
 	req ports.CapabilityCallRequest,
 ) (ports.CapabilityCallResponse, error) {
+	if r.registry == nil {
+		return ports.CapabilityCallResponse{}, fmt.Errorf("capability registry is nil")
+	}
+
+	capabilityImpl, ok := r.registry.Get(req.Name)
+	if !ok {
+		return ports.CapabilityCallResponse{}, fmt.Errorf("capability not found: %s", req.Name)
+	}
+
+	result, err := capabilityImpl.Invoke(ctx, req.Input)
+	if err != nil {
+		return ports.CapabilityCallResponse{}, err
+	}
+
+	if !result.Success {
+		return ports.CapabilityCallResponse{}, fmt.Errorf("capability failed: %s", result.Error)
+	}
+
 	return ports.CapabilityCallResponse{
-		Output: map[string]any{
-			"capability_name": req.Name,
-			"result":          fmt.Sprintf("capability %s executed", req.Name),
-		},
+		Output: result.Output,
 	}, nil
 }
