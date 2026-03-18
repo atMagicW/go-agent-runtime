@@ -9,8 +9,11 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/atMagicW/go-agent-runtime/api/httpapi"
+	openaiadapter "github.com/atMagicW/go-agent-runtime/internal/adapters/llm/openai"
 	pgrepo "github.com/atMagicW/go-agent-runtime/internal/adapters/persistence/postgres"
 	"github.com/atMagicW/go-agent-runtime/internal/app"
+	"github.com/atMagicW/go-agent-runtime/internal/ports"
+	agentrouter "github.com/atMagicW/go-agent-runtime/internal/usecase/router"
 )
 
 func main() {
@@ -20,6 +23,11 @@ func main() {
 	pgDSN := os.Getenv("POSTGRES_DSN")
 	if pgDSN == "" {
 		logger.Fatal("POSTGRES_DSN is not set")
+	}
+
+	openAIKey := os.Getenv("OPENAI_API_KEY")
+	if openAIKey == "" {
+		logger.Fatal("OPENAI_API_KEY is not set")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -32,9 +40,18 @@ func main() {
 	defer db.Close()
 
 	sessionRepo := pgrepo.NewSessionRepository(db)
-
 	sessionService := app.NewSessionService(sessionRepo)
-	agentService := app.NewAgentService(sessionService)
+
+	// 初始化 LLM clients
+	openAIClient := openaiadapter.NewClient(openAIKey)
+
+	llmClients := map[string]ports.LLMClient{
+		"openai": openAIClient,
+	}
+
+	modelRouter := agentrouter.NewModelRouter(llmClients)
+
+	agentService := app.NewAgentService(sessionService, modelRouter)
 
 	handler := httpapi.NewHandler(agentService, sessionService)
 

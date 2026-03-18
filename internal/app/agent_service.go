@@ -23,11 +23,10 @@ type AgentService struct {
 }
 
 // NewAgentService 创建 AgentService
-func NewAgentService(sessionService *SessionService) *AgentService {
+func NewAgentService(sessionService *SessionService, modelRouter *agentrouter.ModelRouter) *AgentService {
 	intentEngine := agentintent.NewEngine()
 	planner := agentplanner.NewPlanner()
 
-	modelRouter := agentrouter.NewModelRouter()
 	capabilityRouter := agentrouter.NewCapabilityRouter()
 	ragRouter := agentrouter.NewRAGRouter()
 
