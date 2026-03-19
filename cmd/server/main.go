@@ -10,6 +10,7 @@ import (
 
 	"github.com/atMagicW/go-agent-runtime/api/httpapi"
 	capregistry "github.com/atMagicW/go-agent-runtime/internal/adapters/capability"
+	mcpcap "github.com/atMagicW/go-agent-runtime/internal/adapters/capability/mcp"
 	"github.com/atMagicW/go-agent-runtime/internal/adapters/capability/skills"
 	"github.com/atMagicW/go-agent-runtime/internal/adapters/capability/tools"
 	openaiadapter "github.com/atMagicW/go-agent-runtime/internal/adapters/llm/openai"
@@ -54,12 +55,23 @@ func main() {
 
 	// 初始化本地能力注册表
 	registry := capregistry.NewRegistry()
+	// 本地Skill / Tool
 	registry.MustRegister(skills.NewResumeAnalyzerSkill())
 	registry.MustRegister(tools.NewKeywordExtractTool())
-
+	// MCP Tool
+	mcpClient := mcpcap.NewClient()
+	for _, spec := range mcpcap.DefaultToolSpecs() {
+		registry.MustRegister(mcpcap.NewToolCapability(mcpClient, spec))
+	}
 	agentService := app.NewAgentService(sessionService, modelRouter, registry)
 
-	handler := httpapi.NewHandler(agentService, sessionService)
+	capabilityService := app.NewCapabilityService(registry)
+
+	handler := httpapi.NewHandler(
+		agentService,
+		sessionService,
+		capabilityService,
+	)
 
 	router := gin.Default()
 	httpapi.RegisterRoutes(router, handler)

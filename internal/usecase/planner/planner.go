@@ -179,6 +179,8 @@ func pickCapabilityName(message string) string {
 	lower := strings.ToLower(message)
 
 	switch {
+	case strings.Contains(lower, "mcp"), strings.Contains(lower, "远程"), strings.Contains(lower, "搜索"):
+		return "mcp_web_search"
 	case strings.Contains(lower, "关键词"), strings.Contains(lower, "keyword"):
 		return "keyword_extract_tool"
 	default:

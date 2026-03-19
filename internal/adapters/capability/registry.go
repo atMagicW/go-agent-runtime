@@ -2,8 +2,10 @@ package capability
 
 import (
 	"fmt"
+	"sort"
 	"sync"
 
+	"github.com/atMagicW/go-agent-runtime/internal/domain/capability"
 	"github.com/atMagicW/go-agent-runtime/internal/ports"
 )
 
@@ -45,6 +47,23 @@ func (r *Registry) Get(name string) (ports.Capability, bool) {
 
 	c, ok := r.capabilities[name]
 	return c, ok
+}
+
+// ListDescriptors 列出所有能力描述
+func (r *Registry) ListDescriptors() []capability.Descriptor {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	out := make([]capability.Descriptor, 0, len(r.capabilities))
+	for _, cap := range r.capabilities {
+		out = append(out, cap.Descriptor())
+	}
+
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].Name < out[j].Name
+	})
+
+	return out
 }
 
 // MustRegister 批量注册，出错直接 panic，适合启动阶段
