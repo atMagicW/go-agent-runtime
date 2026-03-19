@@ -6,6 +6,7 @@ import (
 	httpapi "github.com/atMagicW/go-agent-runtime/api/sse"
 	"github.com/atMagicW/go-agent-runtime/internal/domain/agent"
 	"github.com/atMagicW/go-agent-runtime/internal/domain/capability"
+	"github.com/atMagicW/go-agent-runtime/internal/domain/rag"
 )
 
 // AgentService 定义 HTTP 层需要的 Agent 服务能力
@@ -23,4 +24,9 @@ type SessionService interface {
 // CapabilityService 定义能力列表查询接口
 type CapabilityService interface {
 	ListCapabilities() []capability.Descriptor
+}
+
+// IngestService 定义知识库写入接口
+type IngestService interface {
+	IngestText(ctx context.Context, req rag.IngestTextRequest) (*rag.IngestTextResponse, error)
 }

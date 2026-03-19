@@ -8,6 +8,7 @@ import (
 	mockembedding "github.com/atMagicW/go-agent-runtime/internal/adapters/rag/mock_embedding"
 	pgrag "github.com/atMagicW/go-agent-runtime/internal/adapters/rag/pgvector"
 	"github.com/atMagicW/go-agent-runtime/internal/domain/rag"
+	"github.com/atMagicW/go-agent-runtime/internal/pkg/textsplitter"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
@@ -79,6 +80,9 @@ func main() {
 	embeddingProvider := mockembedding.NewProvider(1536)
 	ragService := app.NewRAGService(ragRepo, embeddingProvider)
 
+	splitter := textsplitter.NewSplitter(300, 50)
+	ingestService := app.NewIngestService(ragRepo, embeddingProvider, splitter)
+
 	// 确保演示知识库存在
 	if err := ragRepo.EnsureKnowledgeBase(ctx, rag.KnowledgeBase{
 		KBID:        "default",
@@ -125,6 +129,7 @@ func main() {
 		agentService,
 		sessionService,
 		capabilityService,
+		ingestService,
 	)
 
 	router := gin.Default()
