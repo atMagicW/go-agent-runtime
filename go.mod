@@ -9,6 +9,7 @@ require (
 	github.com/openai/openai-go v1.12.0
 	github.com/pgvector/pgvector-go v0.3.0
 	go.uber.org/zap v1.27.1
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (

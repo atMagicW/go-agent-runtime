@@ -1,0 +1,19 @@
+app:
+  name: go-agent-runtime
+  env: local
+  port: 8080
+
+database:
+  postgres_dsn: "postgres://agent:agent@localhost:5432/agent_runtime?sslmode=disable"
+
+llm:
+  openai_api_key: ""
+  default_model: "gpt-4.1-mini"
+
+rag:
+  default_top_k: 5
+  embedding_dim: 1536
+
+text_splitter:
+  chunk_size: 300
+  overlap: 50
