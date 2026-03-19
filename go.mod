@@ -7,6 +7,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.8.0
 	github.com/openai/openai-go v1.12.0
+	github.com/pgvector/pgvector-go v0.3.0
 	go.uber.org/zap v1.27.1
 )
 

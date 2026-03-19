@@ -5,6 +5,9 @@ import (
 	"os"
 	"time"
 
+	mockembedding "github.com/atMagicW/go-agent-runtime/internal/adapters/rag/mock_embedding"
+	pgrag "github.com/atMagicW/go-agent-runtime/internal/adapters/rag/pgvector"
+	"github.com/atMagicW/go-agent-runtime/internal/domain/rag"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
@@ -71,7 +74,50 @@ func main() {
 		registry.MustRegister(mcpcap.NewToolCapability(mcpClient, spec))
 	}
 
-	agentService := app.NewAgentService(sessionService, modelRouter, registry)
+	// 初始化 RAG
+	ragRepo := pgrag.NewRepository(db)
+	embeddingProvider := mockembedding.NewProvider(1536)
+	ragService := app.NewRAGService(ragRepo, embeddingProvider)
+
+	// 确保演示知识库存在
+	if err := ragRepo.EnsureKnowledgeBase(ctx, rag.KnowledgeBase{
+		KBID:        "default",
+		TenantID:    "default",
+		Name:        "Default Knowledge Base",
+		Description: "默认演示知识库",
+		Enabled:     true,
+	}); err != nil {
+		logger.Fatal("init default kb failed", zap.Error(err))
+	}
+
+	if err := ragRepo.EnsureKnowledgeBase(ctx, rag.KnowledgeBase{
+		KBID:        "knowledge_a",
+		TenantID:    "default",
+		Name:        "Knowledge A",
+		Description: "演示知识库 A",
+		Enabled:     true,
+	}); err != nil {
+		logger.Fatal("init knowledge_a failed", zap.Error(err))
+	}
+
+	if err := ragRepo.EnsureKnowledgeBase(ctx, rag.KnowledgeBase{
+		KBID:        "knowledge_b",
+		TenantID:    "default",
+		Name:        "Knowledge B",
+		Description: "演示知识库 B",
+		Enabled:     true,
+	}); err != nil {
+		logger.Fatal("init knowledge_b failed", zap.Error(err))
+	}
+
+	agentService := app.NewAgentService(
+		sessionService,
+		modelRouter,
+		registry,
+		ragService,
+		breakers,
+		fallbacks,
+	)
 
 	capabilityService := app.NewCapabilityService(registry)
 
@@ -85,6 +131,19 @@ func main() {
 	httpapi.RegisterRoutes(router, handler)
 
 	logger.Info("Agent Runtime Server starting at :8080")
+
+	// 测试写入数据
+	if err := pgrag.SeedDemoKnowledgeBase(ctx, ragRepo, embeddingProvider, "default"); err != nil {
+		logger.Fatal("seed default kb failed", zap.Error(err))
+	}
+
+	if err := pgrag.SeedDemoKnowledgeBase(ctx, ragRepo, embeddingProvider, "knowledge_a"); err != nil {
+		logger.Fatal("seed knowledge_a failed", zap.Error(err))
+	}
+
+	if err := pgrag.SeedDemoKnowledgeBase(ctx, ragRepo, embeddingProvider, "knowledge_b"); err != nil {
+		logger.Fatal("seed knowledge_b failed", zap.Error(err))
+	}
 
 	if err := router.Run(":8080"); err != nil {
 		logger.Fatal("server start failed", zap.Error(err))

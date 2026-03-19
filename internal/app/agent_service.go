@@ -8,6 +8,7 @@ import (
 	memrepo "github.com/atMagicW/go-agent-runtime/internal/adapters/persistence/memory"
 	promptrepo "github.com/atMagicW/go-agent-runtime/internal/adapters/prompt"
 	"github.com/atMagicW/go-agent-runtime/internal/domain/agent"
+	"github.com/atMagicW/go-agent-runtime/internal/domain/rag"
 	"github.com/atMagicW/go-agent-runtime/internal/ports"
 	agentgov "github.com/atMagicW/go-agent-runtime/internal/usecase/governance"
 	agentintent "github.com/atMagicW/go-agent-runtime/internal/usecase/intent"
@@ -27,21 +28,24 @@ type AgentService struct {
 type capabilityRegistry interface {
 	Get(name string) (ports.Capability, bool)
 }
+type ragSearchService interface {
+	Search(ctx context.Context, kbID string, query string, topK int) ([]rag.Evidence, error)
+}
 
 // NewAgentService 创建 AgentService
 func NewAgentService(
 	sessionService *SessionService,
 	modelRouter *agentrouter.ModelRouter,
 	registry capabilityRegistry,
+	ragService ragSearchService,
+	breakers *agentgov.BreakerRegistry,
+	fallbacks *agentgov.FallbackPolicy,
 ) *AgentService {
 	intentEngine := agentintent.NewEngine()
 	planner := agentplanner.NewPlanner()
 
-	breakers := agentgov.NewBreakerRegistry()
-	fallbacks := agentgov.NewDefaultFallbackPolicy()
-
 	capabilityRouter := agentrouter.NewCapabilityRouter(registry, breakers, fallbacks)
-	ragRouter := agentrouter.NewRAGRouter(breakers, fallbacks)
+	ragRouter := agentrouter.NewRAGRouter(ragService, breakers, fallbacks)
 
 	modelUsageRepo := memrepo.NewModelUsageRepository()
 	auditRepo := memrepo.NewAuditRepository()
