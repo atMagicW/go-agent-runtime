@@ -3,20 +3,30 @@ package router
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/atMagicW/go-agent-runtime/internal/domain/agent"
 	"github.com/atMagicW/go-agent-runtime/internal/ports"
+	"github.com/atMagicW/go-agent-runtime/internal/usecase/governance"
 )
 
 // ModelRouter 是模型路由器
 type ModelRouter struct {
-	clients map[string]ports.LLMClient
+	clients   map[string]ports.LLMClient
+	breakers  *governance.BreakerRegistry
+	fallbacks *governance.FallbackPolicy
 }
 
 // NewModelRouter 创建模型路由器
-func NewModelRouter(clients map[string]ports.LLMClient) *ModelRouter {
+func NewModelRouter(
+	clients map[string]ports.LLMClient,
+	breakers *governance.BreakerRegistry,
+	fallbacks *governance.FallbackPolicy,
+) *ModelRouter {
 	return &ModelRouter{
-		clients: clients,
+		clients:   clients,
+		breakers:  breakers,
+		fallbacks: fallbacks,
 	}
 }
 
@@ -26,30 +36,56 @@ func (r *ModelRouter) Generate(
 	runtimeCtx agent.RuntimeContext,
 	req ports.ModelCallRequest,
 ) (ports.ModelCallResponse, error) {
-	selectedModel := r.selectModel(runtimeCtx, req)
-	selectedProvider := r.selectProvider(selectedModel)
+	primaryModel := r.selectModel(runtimeCtx, req)
 
-	client, ok := r.clients[selectedProvider]
-	if !ok {
-		return ports.ModelCallResponse{}, fmt.Errorf("llm provider client not found: %s", selectedProvider)
+	// 按“主模型 + fallback 模型链”依次尝试
+	candidates := []string{primaryModel}
+	candidates = append(candidates, r.fallbacks.NextModels(primaryModel)...)
+
+	var lastErr error
+
+	for _, modelName := range candidates {
+		provider := r.selectProvider(modelName)
+		client, ok := r.clients[provider]
+		if !ok {
+			lastErr = fmt.Errorf("llm provider client not found: %s", provider)
+			continue
+		}
+
+		breakerName := "model:" + provider + ":" + modelName
+		breaker := r.breakers.GetOrCreate(breakerName, 3, 10*time.Second)
+
+		if !breaker.Allow() {
+			lastErr = fmt.Errorf("circuit breaker open for model %s", modelName)
+			continue
+		}
+
+		resp, err := client.Generate(ctx, ports.LLMGenerateRequest{
+			Model:  modelName,
+			Prompt: req.Prompt,
+			Stream: req.Stream,
+		})
+		if err != nil {
+			breaker.OnFailure()
+			lastErr = err
+			continue
+		}
+
+		breaker.OnSuccess()
+
+		return ports.ModelCallResponse{
+			Text:     resp.Text,
+			Tokens:   resp.TotalTokens,
+			Cost:     resp.Cost,
+			Model:    resp.Model,
+			Provider: resp.Provider,
+		}, nil
 	}
 
-	resp, err := client.Generate(ctx, ports.LLMGenerateRequest{
-		Model:  selectedModel,
-		Prompt: req.Prompt,
-		Stream: req.Stream,
-	})
-	if err != nil {
-		return ports.ModelCallResponse{}, err
+	if lastErr == nil {
+		lastErr = fmt.Errorf("all model candidates failed")
 	}
-
-	return ports.ModelCallResponse{
-		Text:     resp.Text,
-		Tokens:   resp.TotalTokens,
-		Cost:     resp.Cost,
-		Model:    resp.Model,
-		Provider: resp.Provider,
-	}, nil
+	return ports.ModelCallResponse{}, lastErr
 }
 
 // selectModel 选择模型

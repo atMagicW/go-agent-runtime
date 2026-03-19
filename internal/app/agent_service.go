@@ -37,8 +37,11 @@ func NewAgentService(
 	intentEngine := agentintent.NewEngine()
 	planner := agentplanner.NewPlanner()
 
-	capabilityRouter := agentrouter.NewCapabilityRouter(registry)
-	ragRouter := agentrouter.NewRAGRouter()
+	breakers := agentgov.NewBreakerRegistry()
+	fallbacks := agentgov.NewDefaultFallbackPolicy()
+
+	capabilityRouter := agentrouter.NewCapabilityRouter(registry, breakers, fallbacks)
+	ragRouter := agentrouter.NewRAGRouter(breakers, fallbacks)
 
 	modelUsageRepo := memrepo.NewModelUsageRepository()
 	auditRepo := memrepo.NewAuditRepository()

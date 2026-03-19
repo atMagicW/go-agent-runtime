@@ -17,6 +17,7 @@ import (
 	pgrepo "github.com/atMagicW/go-agent-runtime/internal/adapters/persistence/postgres"
 	"github.com/atMagicW/go-agent-runtime/internal/app"
 	"github.com/atMagicW/go-agent-runtime/internal/ports"
+	agentgov "github.com/atMagicW/go-agent-runtime/internal/usecase/governance"
 	agentrouter "github.com/atMagicW/go-agent-runtime/internal/usecase/router"
 )
 
@@ -46,23 +47,30 @@ func main() {
 	sessionRepo := pgrepo.NewSessionRepository(db)
 	sessionService := app.NewSessionService(sessionRepo)
 
+	// 统一治理组件
+	breakers := agentgov.NewBreakerRegistry()
+	fallbacks := agentgov.NewDefaultFallbackPolicy()
+
 	// 初始化 LLM clients
 	openAIClient := openaiadapter.NewClient(openAIKey)
 	llmClients := map[string]ports.LLMClient{
 		"openai": openAIClient,
 	}
-	modelRouter := agentrouter.NewModelRouter(llmClients)
+	modelRouter := agentrouter.NewModelRouter(llmClients, breakers, fallbacks)
 
-	// 初始化本地能力注册表
+	// 初始化统一能力注册表
 	registry := capregistry.NewRegistry()
-	// 本地Skill / Tool
+
+	// 注册本地 Skill / Tool
 	registry.MustRegister(skills.NewResumeAnalyzerSkill())
 	registry.MustRegister(tools.NewKeywordExtractTool())
-	// MCP Tool
+
+	// 注册 MCP Tool
 	mcpClient := mcpcap.NewClient()
 	for _, spec := range mcpcap.DefaultToolSpecs() {
 		registry.MustRegister(mcpcap.NewToolCapability(mcpClient, spec))
 	}
+
 	agentService := app.NewAgentService(sessionService, modelRouter, registry)
 
 	capabilityService := app.NewCapabilityService(registry)
