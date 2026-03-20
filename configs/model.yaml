@@ -1,0 +1,12 @@
+default_model: "gpt-4.1-mini"
+
+models:
+  - name: "gpt-4.1"
+    provider: "openai"
+    enabled: true
+    tags: ["analysis", "retrieval_answer", "write"]
+
+  - name: "gpt-4.1-mini"
+    provider: "openai"
+    enabled: true
+    tags: ["intent", "chat", "low_cost"]

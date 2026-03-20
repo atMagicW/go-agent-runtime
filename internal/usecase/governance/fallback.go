@@ -1,14 +1,11 @@
 package governance
 
+import cfg "github.com/atMagicW/go-agent-runtime/internal/pkg/config"
+
 // FallbackPolicy 定义简单降级策略
 type FallbackPolicy struct {
-	// 模型回退链
-	ModelFallbacks map[string][]string
-
-	// capability 回退链
-	CapabilityFallbacks map[string][]string
-
-	// kb 回退链
+	ModelFallbacks         map[string][]string
+	CapabilityFallbacks    map[string][]string
 	KnowledgeBaseFallbacks map[string][]string
 }
 
@@ -29,7 +26,19 @@ func NewDefaultFallbackPolicy() *FallbackPolicy {
 	}
 }
 
-// NextModels 获取模型回退链
+// NewFallbackPolicyFromConfig 根据配置构造降级策略
+func NewFallbackPolicyFromConfig(c *cfg.FallbackConfig) *FallbackPolicy {
+	if c == nil {
+		return NewDefaultFallbackPolicy()
+	}
+
+	return &FallbackPolicy{
+		ModelFallbacks:         c.ModelFallbacks,
+		CapabilityFallbacks:    c.CapabilityFallbacks,
+		KnowledgeBaseFallbacks: c.KnowledgeBaseFallbacks,
+	}
+}
+
 func (p *FallbackPolicy) NextModels(model string) []string {
 	if p == nil {
 		return nil

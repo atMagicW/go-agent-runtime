@@ -1,0 +1,20 @@
+skills:
+  - name: "resume_analyzer"
+    enabled: true
+
+tools:
+  - name: "keyword_extract_tool"
+    enabled: true
+
+mcp_tools:
+  - name: "mcp_web_search"
+    server_name: "search-server"
+    remote_tool: "web_search"
+    description: "通过远程 MCP Server 执行 Web 搜索"
+    enabled: true
+
+  - name: "mcp_doc_lookup"
+    server_name: "docs-server"
+    remote_tool: "doc_lookup"
+    description: "通过远程 MCP Server 查询文档"
+    enabled: true
