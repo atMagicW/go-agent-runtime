@@ -17,8 +17,9 @@ type ModelConfig struct {
 
 // ModelsConfig 表示模型配置文件
 type ModelsConfig struct {
-	DefaultModel string        `yaml:"default_model"`
-	Models       []ModelConfig `yaml:"models"`
+	DefaultModel  string            `yaml:"default_model"`
+	TaskTypeToTag map[string]string `yaml:"task_type_to_tag"`
+	Models        []ModelConfig     `yaml:"models"`
 }
 
 // LoadModels 加载模型配置
@@ -31,6 +32,10 @@ func LoadModels(path string) (*ModelsConfig, error) {
 	var cfg ModelsConfig
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("unmarshal models config failed: %w", err)
+	}
+
+	if cfg.TaskTypeToTag == nil {
+		cfg.TaskTypeToTag = map[string]string{}
 	}
 
 	return &cfg, nil

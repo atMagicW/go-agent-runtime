@@ -6,13 +6,24 @@ import (
 	"time"
 
 	"github.com/atMagicW/go-agent-runtime/internal/domain/agent"
+	domainmodel "github.com/atMagicW/go-agent-runtime/internal/domain/model"
 	"github.com/atMagicW/go-agent-runtime/internal/ports"
 	"github.com/atMagicW/go-agent-runtime/internal/usecase/governance"
 )
 
+// modelRegistry 是本文件依赖的最小模型注册接口
+type modelRegistry interface {
+	DefaultModel() string
+	Get(name string) (domainmodel.Profile, bool)
+	IsEnabled(name string) bool
+	ProviderOf(name string) string
+	ResolveByTaskType(taskType string) (domainmodel.Profile, bool)
+}
+
 // ModelRouter 是模型路由器
 type ModelRouter struct {
 	clients   map[string]ports.LLMClient
+	registry  modelRegistry
 	breakers  *governance.BreakerRegistry
 	fallbacks *governance.FallbackPolicy
 }
@@ -20,11 +31,13 @@ type ModelRouter struct {
 // NewModelRouter 创建模型路由器
 func NewModelRouter(
 	clients map[string]ports.LLMClient,
+	registry modelRegistry,
 	breakers *governance.BreakerRegistry,
 	fallbacks *governance.FallbackPolicy,
 ) *ModelRouter {
 	return &ModelRouter{
 		clients:   clients,
+		registry:  registry,
 		breakers:  breakers,
 		fallbacks: fallbacks,
 	}
@@ -36,16 +49,23 @@ func (r *ModelRouter) Generate(
 	runtimeCtx agent.RuntimeContext,
 	req ports.ModelCallRequest,
 ) (ports.ModelCallResponse, error) {
-	primaryModel := r.selectModel(runtimeCtx, req)
+	primaryModel, err := r.selectModel(runtimeCtx, req)
+	if err != nil {
+		return ports.ModelCallResponse{}, err
+	}
 
-	// 按“主模型 + fallback 模型链”依次尝试
 	candidates := []string{primaryModel}
-	candidates = append(candidates, r.fallbacks.NextModels(primaryModel)...)
+	candidates = append(candidates, r.filterEnabledFallbackModels(primaryModel)...)
 
 	var lastErr error
 
 	for _, modelName := range candidates {
 		provider := r.selectProvider(modelName)
+		if provider == "" {
+			lastErr = fmt.Errorf("provider not found for model %s", modelName)
+			continue
+		}
+
 		client, ok := r.clients[provider]
 		if !ok {
 			lastErr = fmt.Errorf("llm provider client not found: %s", provider)
@@ -95,14 +115,23 @@ func (r *ModelRouter) GenerateStream(
 	req ports.ModelCallRequest,
 	onToken ports.ModelStreamHandler,
 ) error {
-	primaryModel := r.selectModel(runtimeCtx, req)
+	primaryModel, err := r.selectModel(runtimeCtx, req)
+	if err != nil {
+		return err
+	}
+
 	candidates := []string{primaryModel}
-	candidates = append(candidates, r.fallbacks.NextModels(primaryModel)...)
+	candidates = append(candidates, r.filterEnabledFallbackModels(primaryModel)...)
 
 	var lastErr error
 
 	for _, modelName := range candidates {
 		provider := r.selectProvider(modelName)
+		if provider == "" {
+			lastErr = fmt.Errorf("provider not found for model %s", modelName)
+			continue
+		}
+
 		client, ok := r.clients[provider]
 		if !ok {
 			lastErr = fmt.Errorf("llm provider client not found: %s", provider)
@@ -149,43 +178,63 @@ func (r *ModelRouter) GenerateStream(
 	return lastErr
 }
 
-func (r *ModelRouter) selectModel(runtimeCtx agent.RuntimeContext, req ports.ModelCallRequest) string {
-	// 1. 用户强制指定模型优先
+func (r *ModelRouter) selectModel(
+	runtimeCtx agent.RuntimeContext,
+	req ports.ModelCallRequest,
+) (string, error) {
 	if runtimeCtx.Request.Model != "" {
-		return runtimeCtx.Request.Model
+		if r.registry != nil && r.registry.IsEnabled(runtimeCtx.Request.Model) {
+			return runtimeCtx.Request.Model, nil
+		}
+		return "", fmt.Errorf("requested model is not enabled: %s", runtimeCtx.Request.Model)
 	}
 
-	// 2. 按任务类型路由
-	switch req.TaskType {
-	case "intent":
-		return "gpt-4.1-mini"
-	case "retrieve_answer":
-		return "gpt-4.1"
-	case "analysis":
-		return "gpt-4.1"
-	case "write":
-		return "gpt-4.1"
-	case "llm_generate":
-		return "gpt-4.1-mini"
-	case "llm_analyze":
-		return "gpt-4.1"
-	default:
-		return "gpt-4.1-mini"
+	if r.registry != nil {
+		if item, ok := r.registry.ResolveByTaskType(req.TaskType); ok {
+			return item.Name, nil
+		}
 	}
+
+	if r.registry != nil {
+		model := r.registry.DefaultModel()
+		if model != "" && r.registry.IsEnabled(model) {
+			return model, nil
+		}
+	}
+
+	return "", fmt.Errorf("no enabled model available")
 }
 
-// selectProvider 根据模型名选择 provider
 func (r *ModelRouter) selectProvider(model string) string {
-	switch {
-	case model == "":
-		return "openai"
-	case len(model) >= 3 && model[:3] == "gpt":
-		return "openai"
-	case len(model) >= 6 && model[:6] == "claude":
-		return "anthropic"
-	case len(model) >= 6 && model[:6] == "gemini":
-		return "gemini"
-	default:
-		return "openai"
+	if r.registry != nil {
+		if provider := r.registry.ProviderOf(model); provider != "" {
+			return provider
+		}
 	}
+	return ""
+}
+
+func (r *ModelRouter) filterEnabledFallbackModels(primaryModel string) []string {
+	raw := r.fallbacks.NextModels(primaryModel)
+	if r.registry == nil {
+		return raw
+	}
+
+	out := make([]string, 0, len(raw))
+	seen := map[string]struct{}{}
+
+	for _, name := range raw {
+		if name == "" {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		if r.registry.IsEnabled(name) {
+			out = append(out, name)
+			seen[name] = struct{}{}
+		}
+	}
+
+	return out
 }

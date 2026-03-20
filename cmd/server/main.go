@@ -70,11 +70,19 @@ func main() {
 	breakers := agentgov.NewBreakerRegistry()
 	fallbacks := agentgov.NewFallbackPolicyFromConfig(fallbackCfg)
 
+	modelRegistry := app.NewModelRegistry(modelCfg)
+
 	openAIClient := openaiadapter.NewClient(appCfg.LLM.OpenAIAPIKey)
 	llmClients := map[string]ports.LLMClient{
 		"openai": openAIClient,
 	}
-	modelRouter := agentrouter.NewModelRouter(llmClients, breakers, fallbacks)
+
+	modelRouter := agentrouter.NewModelRouter(
+		llmClients,
+		modelRegistry,
+		breakers,
+		fallbacks,
+	)
 
 	mcpClient := mcpcap.NewClient()
 	registry := app.BuildCapabilityRegistry(capCfg, mcpClient)
@@ -90,8 +98,6 @@ func main() {
 	if err := app.InitKnowledgeBases(ctx, ragRepo, embeddingProvider, kbCfg); err != nil {
 		logger.Fatal("init knowledge bases failed", zap.Error(err))
 	}
-
-	_ = modelCfg // 先加载，等等继续接入模型注册和默认模型策略
 
 	agentService := app.NewAgentService(
 		sessionService,
