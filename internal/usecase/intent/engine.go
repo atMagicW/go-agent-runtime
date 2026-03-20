@@ -33,7 +33,7 @@ func (e *Engine) Recognize(_ context.Context, _ agent.RuntimeContext, message st
 			Slots:              map[string]any{},
 		}, nil
 
-	case strings.Contains(lower, "调用工具") || strings.Contains(lower, "skill") || strings.Contains(lower, "mcp"):
+	case strings.Contains(lower, "调用工具") || strings.Contains(lower, "skill") || strings.Contains(lower, "mcp") || strings.Contains(lower, "tool"):
 		return agent.IntentResult{
 			IntentType:         agent.IntentToolCall,
 			Confidence:         0.88,

@@ -36,3 +36,10 @@ curl-health:
 .PHONY: curl-capabilities
 curl-capabilities:
 	curl localhost:8080/v1/capabilities
+
+.PHONY: test-short
+test-short:
+	go test ./internal/... ./api/...
+
+.PHONY: check
+check: fmt test

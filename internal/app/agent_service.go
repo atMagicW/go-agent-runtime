@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	httpapi "github.com/atMagicW/go-agent-runtime/api/sse"
@@ -22,6 +23,7 @@ import (
 type AgentService struct {
 	orchestrator   *agentruntime.Orchestrator
 	sessionService *SessionService
+	modelRouter    ports.ModelRouter
 }
 
 // capabilityRegistry 是本文件用到的最小能力注册接口
@@ -74,6 +76,7 @@ func NewAgentService(
 	return &AgentService{
 		orchestrator:   orchestrator,
 		sessionService: sessionService,
+		modelRouter:    modelRouter,
 	}
 }
 
@@ -171,6 +174,33 @@ func (s *AgentService) RunStream(
 
 	writer.WriteEvent("plan", "starting orchestrator")
 
+	// 第一阶段增强：
+	// 对纯文本生成请求，直接走模型流式输出。
+	// 对复杂工作流，仍走原有编排结果输出。
+	intentResult, err := s.orchestratorIntentOnly(ctx, runtimeCtx, message)
+	if err != nil {
+		writer.WriteEvent("error", err.Error())
+		return
+	}
+
+	if intentResult.IntentType == agent.IntentChat || intentResult.IntentType == agent.IntentWrite {
+		prompt := "请回答用户请求：\n" + message
+
+		err := s.streamDirectModel(ctx, runtimeCtx, prompt, writer)
+		if err != nil {
+			writer.WriteEvent("error", err.Error())
+			return
+		}
+
+		if err := s.sessionService.SaveAssistantMessage(ctx, reqCtx.SessionID, "[streamed response saved separately if needed]"); err != nil {
+			writer.WriteEvent("error", err.Error())
+			return
+		}
+
+		writer.WriteEvent("done", "completed")
+		return
+	}
+
 	resp, results, err := s.orchestrator.Run(ctx, runtimeCtx, message)
 	if err != nil {
 		writer.WriteEvent("error", err.Error())
@@ -199,4 +229,36 @@ func (s *AgentService) RunStream(
 
 	writer.WriteToken(resp.Message)
 	writer.WriteEvent("done", "completed")
+}
+
+func (s *AgentService) orchestratorIntentOnly(
+	ctx context.Context,
+	runtimeCtx agent.RuntimeContext,
+	message string,
+) (agent.IntentResult, error) {
+	// 为了不改动太多 orchestrator 结构，
+	// 第一版在这里直接复用 intent engine 的同等能力逻辑即可。
+	// 更彻底的做法是把 intent engine 暴露到 service 层。
+	intentEngine := agentintent.NewEngine()
+	return intentEngine.Recognize(ctx, runtimeCtx, message)
+}
+
+func (s *AgentService) streamDirectModel(
+	ctx context.Context,
+	runtimeCtx agent.RuntimeContext,
+	prompt string,
+	writer *httpapi.StreamWriter,
+) error {
+	if s.modelRouter == nil {
+		return fmt.Errorf("model router is nil")
+	}
+
+	return s.modelRouter.GenerateStream(ctx, runtimeCtx, ports.ModelCallRequest{
+		TaskType: "llm_generate",
+		Prompt:   prompt,
+		Stream:   true,
+	}, func(text string) error {
+		writer.WriteToken(text)
+		return nil
+	})
 }

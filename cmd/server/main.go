@@ -85,8 +85,10 @@ func main() {
 	splitter := textsplitter.NewSplitter(cfg.TextSplitter.ChunkSize, cfg.TextSplitter.Overlap)
 	ingestService := app.NewIngestService(ragRepo, embeddingProvider, splitter)
 	// 确保演示知识库存在
-	seedKnowledgeBases(ctx, logger, ragRepo)
-	seedDemoData(ctx, logger, ragRepo, embeddingProvider)
+	if cfg.App.Env == "local" {
+		seedKnowledgeBases(ctx, logger, ragRepo)
+		seedDemoData(ctx, logger, ragRepo, embeddingProvider)
+	}
 
 	agentService := app.NewAgentService(
 		sessionService,

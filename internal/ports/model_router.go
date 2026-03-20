@@ -25,7 +25,11 @@ type ModelCallResponse struct {
 	Provider string
 }
 
+// ModelStreamHandler 处理模型流式 token
+type ModelStreamHandler func(text string) error
+
 // ModelRouter 定义多模型路由接口
 type ModelRouter interface {
 	Generate(ctx context.Context, runtimeCtx agent.RuntimeContext, req ModelCallRequest) (ModelCallResponse, error)
+	GenerateStream(ctx context.Context, runtimeCtx agent.RuntimeContext, req ModelCallRequest, onToken ModelStreamHandler) error
 }

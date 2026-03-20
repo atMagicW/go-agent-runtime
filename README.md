@@ -1,17 +1,23 @@
 # go-agent-runtime
 
-一个基于 Go 实现的可插拔 Agent Runtime Demo，支持：
+一个基于 Go 的可插拔 Agent Runtime Demo，支持多模型路由、Skill/Tool/MCP 统一调度、多知识库 RAG、任务编排与工程化治理
 
-- 多 LLM 路由
-- Skill / Tool / MCP 统一 Capability 调度
-- 多知识库 RAG 路由
-- 意图识别与任务编排
-- 会话持久化
-- Prompt 模板版本管理
-- 模型成本统计
-- 审计日志
-- 熔断与降级
-- 知识库 ingest
+## 核心能力
+
+### 1. Multi-LLM Routing
+支持按任务类型、用户指定、降级策略选择不同模型。
+
+### 2. Capability Routing
+将本地 Skill、Tool 与远程 MCP Tool 统一为 Capability，通过 Registry 管理并由 Router 分发执行。
+
+### 3. Multi-KB RAG
+支持知识库隔离、文本 ingest、切块、向量检索与关键词回退检索。
+
+### 4. Planning & Orchestration
+支持意图识别、执行计划生成、步骤依赖与并发执行。
+
+### 5. Governance
+支持请求超时、步骤重试、熔断与降级、模型成本统计与审计日志。
 
 ## 项目结构
 
@@ -30,3 +36,4 @@
 
 ```bash
 make docker-up
+
