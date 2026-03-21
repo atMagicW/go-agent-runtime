@@ -51,7 +51,14 @@ func NewAgentService(
 
 	modelUsageRepo := memrepo.NewModelUsageRepository()
 	auditRepo := memrepo.NewAuditRepository()
-	promptRepository := promptrepo.NewInMemoryRepository()
+
+	var promptRepository ports.PromptRepository
+	fileRepo, err := promptrepo.NewFileRepository("prompts")
+	if err != nil {
+		promptRepository = promptrepo.NewInMemoryRepository()
+	} else {
+		promptRepository = fileRepo
+	}
 
 	costTracker := agentgov.NewCostTracker(modelUsageRepo)
 	auditLogger := agentgov.NewAuditLogger(auditRepo)

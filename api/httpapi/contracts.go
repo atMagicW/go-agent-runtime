@@ -6,6 +6,7 @@ import (
 	httpapi "github.com/atMagicW/go-agent-runtime/api/sse"
 	"github.com/atMagicW/go-agent-runtime/internal/domain/agent"
 	"github.com/atMagicW/go-agent-runtime/internal/domain/capability"
+	domainprompt "github.com/atMagicW/go-agent-runtime/internal/domain/prompt"
 	"github.com/atMagicW/go-agent-runtime/internal/domain/rag"
 )
 
@@ -29,4 +30,10 @@ type CapabilityService interface {
 // IngestService 定义知识库写入接口
 type IngestService interface {
 	IngestText(ctx context.Context, req rag.IngestTextRequest) (*rag.IngestTextResponse, error)
+}
+
+// PromptService 定义 Prompt 查询接口
+type PromptService interface {
+	GetLatest(ctx context.Context, promptName string) (domainprompt.Template, error)
+	ListVersions(ctx context.Context, promptName string) ([]domainprompt.Template, error)
 }

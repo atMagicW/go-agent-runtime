@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	promptrepo "github.com/atMagicW/go-agent-runtime/internal/adapters/prompt"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
@@ -110,11 +111,27 @@ func main() {
 
 	capabilityService := app.NewCapabilityService(registry)
 
+	filePromptRepo, err := promptrepo.NewFileRepository("prompts")
+	if err != nil {
+		logger.Warn("load file prompt repository failed, fallback to in-memory", zap.Error(err))
+		filePromptRepo = nil
+	}
+
+	var promptRepo ports.PromptRepository
+	if filePromptRepo != nil {
+		promptRepo = filePromptRepo
+	} else {
+		promptRepo = promptrepo.NewInMemoryRepository()
+	}
+
+	promptService := app.NewPromptService(promptRepo)
+
 	handler := httpapi.NewHandler(
 		agentService,
 		sessionService,
 		capabilityService,
 		ingestService,
+		promptService,
 	)
 
 	router := gin.Default()

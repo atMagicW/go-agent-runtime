@@ -8,6 +8,7 @@ type Handler struct {
 	sessionService    SessionService
 	capabilityService CapabilityService
 	ingestService     IngestService
+	promptService     PromptService
 }
 
 // NewHandler 创建 HTTP Handler
@@ -16,12 +17,14 @@ func NewHandler(
 	sessionService SessionService,
 	capabilityService CapabilityService,
 	ingestService IngestService,
+	promptService PromptService,
 ) *Handler {
 	return &Handler{
 		agentService:      agentService,
 		sessionService:    sessionService,
 		capabilityService: capabilityService,
 		ingestService:     ingestService,
+		promptService:     promptService,
 	}
 }
 
@@ -31,10 +34,11 @@ func RegisterRoutes(r *gin.Engine, h *Handler) {
 	{
 		v1.GET("/health", h.HealthHandler)
 		v1.GET("/capabilities", h.ListCapabilitiesHandler)
+		v1.GET("/prompts/:name", h.GetLatestPromptHandler)
+		v1.GET("/prompts/:name/versions", h.ListPromptVersionsHandler)
+
 		v1.POST("/chat", h.ChatHandler)
 		v1.GET("/sessions/:id", h.GetSessionHandler)
-
-		// RAG ingest
 		v1.POST("/rag/ingest", h.IngestTextHandler)
 	}
 }
