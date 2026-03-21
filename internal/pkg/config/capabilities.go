@@ -16,17 +16,24 @@ type SimpleCapabilityConfig struct {
 // MCPToolConfig 表示 MCP Tool 配置
 type MCPToolConfig struct {
 	Name        string `yaml:"name"`
-	ServerName  string `yaml:"server_name"`
 	RemoteTool  string `yaml:"remote_tool"`
 	Description string `yaml:"description"`
 	Enabled     bool   `yaml:"enabled"`
 }
 
+// MCPServerConfig 表示 MCP Server 配置
+type MCPServerConfig struct {
+	Name        string          `yaml:"name"`
+	Description string          `yaml:"description"`
+	Enabled     bool            `yaml:"enabled"`
+	Tools       []MCPToolConfig `yaml:"tools"`
+}
+
 // CapabilitiesConfig 表示能力配置文件
 type CapabilitiesConfig struct {
-	Skills   []SimpleCapabilityConfig `yaml:"skills"`
-	Tools    []SimpleCapabilityConfig `yaml:"tools"`
-	MCPTools []MCPToolConfig          `yaml:"mcp_tools"`
+	Skills     []SimpleCapabilityConfig `yaml:"skills"`
+	Tools      []SimpleCapabilityConfig `yaml:"tools"`
+	MCPServers []MCPServerConfig        `yaml:"mcp_servers"`
 }
 
 // LoadCapabilities 加载能力配置

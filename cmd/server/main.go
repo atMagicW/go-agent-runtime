@@ -81,6 +81,8 @@ func main() {
 
 	pricingService := app.NewPricingService(pricingCfg)
 
+	mcpService := app.NewMCPService(capCfg)
+
 	openAIClient := openaiadapter.NewClient(appCfg.LLM.OpenAIAPIKey, pricingService)
 	llmClients := map[string]ports.LLMClient{
 		"openai": openAIClient,
@@ -157,6 +159,7 @@ func main() {
 		capabilityService,
 		ingestService,
 		promptService,
+		mcpService,
 	)
 
 	router := gin.Default()

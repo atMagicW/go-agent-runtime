@@ -9,6 +9,7 @@ type Handler struct {
 	capabilityService CapabilityService
 	ingestService     IngestService
 	promptService     PromptService
+	mcpService        MCPService
 }
 
 // NewHandler 创建 HTTP Handler
@@ -18,6 +19,7 @@ func NewHandler(
 	capabilityService CapabilityService,
 	ingestService IngestService,
 	promptService PromptService,
+	mcpService MCPService,
 ) *Handler {
 	return &Handler{
 		agentService:      agentService,
@@ -25,6 +27,7 @@ func NewHandler(
 		capabilityService: capabilityService,
 		ingestService:     ingestService,
 		promptService:     promptService,
+		mcpService:        mcpService,
 	}
 }
 
@@ -34,6 +37,7 @@ func RegisterRoutes(r *gin.Engine, h *Handler) {
 	{
 		v1.GET("/health", h.HealthHandler)
 		v1.GET("/capabilities", h.ListCapabilitiesHandler)
+		v1.GET("/mcp/servers", h.ListMCPServersHandler)
 		v1.GET("/prompts/:name", h.GetLatestPromptHandler)
 		v1.GET("/prompts/:name/versions", h.ListPromptVersionsHandler)
 

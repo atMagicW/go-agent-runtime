@@ -6,15 +6,26 @@ tools:
   - name: "keyword_extract_tool"
     enabled: true
 
-mcp_tools:
-  - name: "mcp_web_search"
-    server_name: "search-server"
-    remote_tool: "web_search"
-    description: "通过远程 MCP Server 执行 Web 搜索"
+mcp_servers:
+  - name: "search-server"
     enabled: true
+    description: "远程搜索服务"
+    tools:
+      - name: "mcp_web_search"
+        remote_tool: "web_search"
+        description: "通过远程 MCP Server 执行 Web 搜索"
+        enabled: true
 
-  - name: "mcp_doc_lookup"
-    server_name: "docs-server"
-    remote_tool: "doc_lookup"
-    description: "通过远程 MCP Server 查询文档"
+      - name: "mcp_news_search"
+        remote_tool: "news_search"
+        description: "通过远程 MCP Server 执行新闻搜索"
+        enabled: false
+
+  - name: "docs-server"
     enabled: true
+    description: "远程文档查询服务"
+    tools:
+      - name: "mcp_doc_lookup"
+        remote_tool: "doc_lookup"
+        description: "通过远程 MCP Server 查询文档"
+        enabled: true

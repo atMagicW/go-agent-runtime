@@ -27,7 +27,7 @@ func (c *ToolCapability) Descriptor() capability.Descriptor {
 		Name:        c.spec.Name,
 		Kind:        capability.KindMCPTool,
 		Description: c.spec.Description,
-		Tags:        []string{"mcp", "remote_tool"},
+		Tags:        []string{"mcp", "remote_tool", c.spec.ServerName},
 		Version:     c.spec.Version,
 		Enabled:     c.spec.Enabled,
 	}
@@ -50,10 +50,11 @@ func (c *ToolCapability) Invoke(ctx context.Context, input map[string]any) (capa
 	}
 
 	output := map[string]any{
-		"capability_name": c.spec.Name,
-		"kind":            "mcp_tool",
-		"server_name":     c.spec.ServerName,
-		"remote_tool":     c.spec.RemoteTool,
+		"capability_name":    c.spec.Name,
+		"kind":               "mcp_tool",
+		"server_name":        c.spec.ServerName,
+		"server_description": c.spec.ServerDescription,
+		"remote_tool":        c.spec.RemoteTool,
 	}
 
 	for k, v := range resp.Output {

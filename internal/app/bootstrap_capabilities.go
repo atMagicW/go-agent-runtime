@@ -38,18 +38,26 @@ func BuildCapabilityRegistry(capCfg *cfg.CapabilitiesConfig, mcpClient ports.MCP
 		}
 	}
 
-	for _, item := range capCfg.MCPTools {
-		if !item.Enabled {
+	for _, server := range capCfg.MCPServers {
+		if !server.Enabled {
 			continue
 		}
-		registry.MustRegister(mcpcap.NewToolCapability(mcpClient, capability.MCPToolSpec{
-			Name:        item.Name,
-			ServerName:  item.ServerName,
-			RemoteTool:  item.RemoteTool,
-			Description: item.Description,
-			Version:     "v1",
-			Enabled:     item.Enabled,
-		}))
+
+		for _, tool := range server.Tools {
+			if !tool.Enabled {
+				continue
+			}
+
+			registry.MustRegister(mcpcap.NewToolCapability(mcpClient, capability.MCPToolSpec{
+				Name:              tool.Name,
+				ServerName:        server.Name,
+				ServerDescription: server.Description,
+				RemoteTool:        tool.RemoteTool,
+				Description:       tool.Description,
+				Version:           "v1",
+				Enabled:           tool.Enabled,
+			}))
+		}
 	}
 
 	return registry

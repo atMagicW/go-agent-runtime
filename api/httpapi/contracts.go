@@ -8,6 +8,7 @@ import (
 	"github.com/atMagicW/go-agent-runtime/internal/domain/capability"
 	domainprompt "github.com/atMagicW/go-agent-runtime/internal/domain/prompt"
 	"github.com/atMagicW/go-agent-runtime/internal/domain/rag"
+	cfg "github.com/atMagicW/go-agent-runtime/internal/pkg/config"
 )
 
 // AgentService 定义 HTTP 层需要的 Agent 服务能力
@@ -36,4 +37,9 @@ type IngestService interface {
 type PromptService interface {
 	GetLatest(ctx context.Context, promptName string) (domainprompt.Template, error)
 	ListVersions(ctx context.Context, promptName string) ([]domainprompt.Template, error)
+}
+
+// MCPService 定义 MCP server 查询接口
+type MCPService interface {
+	ListServers() []cfg.MCPServerConfig
 }

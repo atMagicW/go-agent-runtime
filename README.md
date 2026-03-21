@@ -36,4 +36,22 @@
 
 ```bash
 make docker-up
+```
+
+## MCP 支持
+
+系统支持通过配置文件注册多个 MCP Server，并为每个 Server 挂载多个 Tool。
+
+当前示例包括：
+
+- `search-server`
+    - `mcp_web_search`
+    - `mcp_news_search`
+- `docs-server`
+    - `mcp_doc_lookup`
+
+可通过以下接口查看当前 MCP 配置：
+
+```bash
+curl localhost:8080/v1/mcp/servers
 
