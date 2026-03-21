@@ -108,6 +108,96 @@ func (o *Orchestrator) Run(
 		}
 	}
 
+	finalResp := o.composeFinalResponse(ctx, runtimeCtx, message, results)
+
+	if o.auditLogger != nil {
+		_ = o.auditLogger.Log(
+			ctx,
+			runtimeCtx.Request,
+			intentResult,
+			plan,
+			results,
+			finalResp,
+			startedAt,
+			"succeeded",
+		)
+	}
+
+	return finalResp, results, nil
+}
+
+func (o *Orchestrator) RunWithEvents(
+	ctx context.Context,
+	runtimeCtx agent.RuntimeContext,
+	message string,
+	publisher ports.EventPublisher,
+) (agent.FinalResponse, []agent.StepResult, error) {
+	startedAt := time.Now()
+
+	intentResult, err := o.intentEngine.Recognize(ctx, runtimeCtx, message)
+	if err != nil {
+		return agent.FinalResponse{}, nil, err
+	}
+	runtimeCtx.Intent = intentResult
+
+	if publisher != nil {
+		publisher.Publish("intent", string(intentResult.IntentType))
+	}
+
+	plan, err := o.planner.BuildPlan(ctx, runtimeCtx, message)
+	if err != nil {
+		return agent.FinalResponse{}, nil, err
+	}
+
+	if publisher != nil {
+		publisher.Publish("plan", plan.PlanID)
+	}
+
+	// 如果 executor 支持事件版执行，则优先走事件版
+	if eventExec, ok := o.executor.(interface {
+		ExecutePlanWithEvents(context.Context, agent.RuntimeContext, agent.ExecutionPlan, ports.EventPublisher) ([]agent.StepResult, error)
+	}); ok {
+		results, execErr := eventExec.ExecutePlanWithEvents(ctx, runtimeCtx, plan, publisher)
+		if execErr != nil {
+			finalResp := agent.FinalResponse{Message: "execution failed"}
+			if o.auditLogger != nil {
+				_ = o.auditLogger.Log(ctx, runtimeCtx.Request, intentResult, plan, results, finalResp, startedAt, "failed")
+			}
+			return finalResp, results, execErr
+		}
+
+		finalResp := o.composeFinalResponse(ctx, runtimeCtx, message, results)
+		if o.auditLogger != nil {
+			_ = o.auditLogger.Log(ctx, runtimeCtx.Request, intentResult, plan, results, finalResp, startedAt, "succeeded")
+		}
+		return finalResp, results, nil
+	}
+
+	// 回退到原始执行
+	return o.Run(ctx, runtimeCtx, message)
+}
+
+func (o *Orchestrator) composeFinalResponse(
+	ctx context.Context,
+	runtimeCtx agent.RuntimeContext,
+	message string,
+	results []agent.StepResult,
+) agent.FinalResponse {
+	totalCost := 0.0
+	totalTokens := 0
+
+	for _, result := range results {
+		if !result.Success {
+			continue
+		}
+		if cost, ok := result.Output["cost"].(float64); ok {
+			totalCost += cost
+		}
+		if tokens, ok := result.Output["tokens"].(int); ok {
+			totalTokens += tokens
+		}
+	}
+
 	finalResp := agent.FinalResponse{
 		Message: "execution completed",
 		Cost:    totalCost,
@@ -131,20 +221,7 @@ func (o *Orchestrator) Run(
 		}
 	}
 
-	if o.auditLogger != nil {
-		_ = o.auditLogger.Log(
-			ctx,
-			runtimeCtx.Request,
-			intentResult,
-			plan,
-			results,
-			finalResp,
-			startedAt,
-			"succeeded",
-		)
-	}
-
-	return finalResp, results, nil
+	return finalResp
 }
 
 // ------------------------------------------------------------------
@@ -255,6 +332,89 @@ func (e *PlanExecutor) ExecutePlan(
 	return results, nil
 }
 
+func (e *PlanExecutor) ExecutePlanWithEvents(
+	ctx context.Context,
+	runtimeCtx agent.RuntimeContext,
+	plan agent.ExecutionPlan,
+	publisher ports.EventPublisher,
+) ([]agent.StepResult, error) {
+	stepMap := make(map[string]agent.PlanStep, len(plan.Steps))
+	for _, step := range plan.Steps {
+		stepMap[step.StepID] = step
+	}
+
+	completed := make(map[string]agent.StepResult)
+	results := make([]agent.StepResult, 0, len(plan.Steps))
+
+	for len(completed) < len(plan.Steps) {
+		ready := e.findReadySteps(plan.Steps, completed)
+		if len(ready) == 0 {
+			return results, fmt.Errorf("no executable step found, maybe dependency cycle")
+		}
+
+		grouped := e.groupByParallelKey(ready)
+
+		for _, steps := range grouped {
+			if len(steps) == 1 {
+				step := steps[0]
+				if publisher != nil {
+					publisher.Publish("step_started", step.StepID)
+				}
+				result := e.executeStepWithEvents(ctx, runtimeCtx, step, completed, publisher)
+				completed[step.StepID] = result
+				results = append(results, result)
+
+				if publisher != nil {
+					if result.Success {
+						publisher.Publish("step_completed", step.StepID)
+					} else {
+						publisher.Publish("step_failed", step.StepID+":"+result.Error)
+					}
+				}
+				continue
+			}
+
+			var wg sync.WaitGroup
+			var mu sync.Mutex
+			tmpResults := make([]agent.StepResult, 0, len(steps))
+
+			for _, step := range steps {
+				wg.Add(1)
+				go func(s agent.PlanStep) {
+					defer wg.Done()
+
+					if publisher != nil {
+						publisher.Publish("step_started", s.StepID)
+					}
+
+					result := e.executeStepWithEvents(ctx, runtimeCtx, s, completed, publisher)
+
+					if publisher != nil {
+						if result.Success {
+							publisher.Publish("step_completed", s.StepID)
+						} else {
+							publisher.Publish("step_failed", s.StepID+":"+result.Error)
+						}
+					}
+
+					mu.Lock()
+					tmpResults = append(tmpResults, result)
+					mu.Unlock()
+				}(step)
+			}
+
+			wg.Wait()
+
+			for _, result := range tmpResults {
+				completed[result.StepID] = result
+				results = append(results, result)
+			}
+		}
+	}
+
+	return results, nil
+}
+
 // findReadySteps 找到当前可执行步骤
 func (e *PlanExecutor) findReadySteps(
 	steps []agent.PlanStep,
@@ -320,6 +480,37 @@ func (e *PlanExecutor) executeStepWithRetry(
 	}
 
 	return lastResult
+}
+
+func (e *PlanExecutor) executeStepWithEvents(
+	ctx context.Context,
+	runtimeCtx agent.RuntimeContext,
+	step agent.PlanStep,
+	completed map[string]agent.StepResult,
+	publisher ports.EventPublisher,
+) agent.StepResult {
+	result := e.executeStep(ctx, runtimeCtx, step, completed)
+
+	if !result.Success {
+		return result
+	}
+
+	switch step.Executor {
+	case "rag_router":
+		if publisher != nil {
+			if raw, ok := result.Output["evidences"]; ok {
+				publisher.Publish("retrieval", fmt.Sprintf("%v", raw))
+			}
+		}
+	case "capability_router":
+		if publisher != nil {
+			if name, ok := result.Output["capability_name"].(string); ok {
+				publisher.Publish("tool_called", name)
+			}
+		}
+	}
+
+	return result
 }
 
 // executeStep 执行单个步骤

@@ -3,7 +3,6 @@ package httpapi
 import (
 	"net/http"
 
-	httpapi "github.com/atMagicW/go-agent-runtime/api/sse"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
@@ -40,7 +39,7 @@ func (h *Handler) ChatHandler(c *gin.Context) {
 	}
 
 	if req.Stream {
-		httpapi.StreamResponse(c, func(writer *httpapi.StreamWriter) {
+		StreamResponse(c, func(writer *StreamWriter) {
 			h.agentService.RunStream(reqCtx, req.Message, writer)
 		})
 		return

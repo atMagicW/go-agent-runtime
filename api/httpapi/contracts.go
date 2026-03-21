@@ -3,7 +3,6 @@ package httpapi
 import (
 	"context"
 
-	httpapi "github.com/atMagicW/go-agent-runtime/api/sse"
 	"github.com/atMagicW/go-agent-runtime/internal/domain/agent"
 	"github.com/atMagicW/go-agent-runtime/internal/domain/capability"
 	domainprompt "github.com/atMagicW/go-agent-runtime/internal/domain/prompt"
@@ -14,7 +13,7 @@ import (
 // AgentService 定义 HTTP 层需要的 Agent 服务能力
 type AgentService interface {
 	Run(reqCtx agent.RequestContext, message string) (*agent.FinalResponse, error)
-	RunStream(reqCtx agent.RequestContext, message string, writer *httpapi.StreamWriter)
+	RunStream(reqCtx agent.RequestContext, message string, writer *StreamWriter)
 }
 
 // SessionService 定义 HTTP 层需要的 Session 服务能力

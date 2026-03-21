@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	httpapi "github.com/atMagicW/go-agent-runtime/api/sse"
+	"github.com/atMagicW/go-agent-runtime/api/httpapi"
 	memrepo "github.com/atMagicW/go-agent-runtime/internal/adapters/persistence/memory"
 	promptrepo "github.com/atMagicW/go-agent-runtime/internal/adapters/prompt"
 	"github.com/atMagicW/go-agent-runtime/internal/domain/agent"
@@ -21,9 +21,10 @@ import (
 
 // AgentService 是 Agent 运行时服务入口
 type AgentService struct {
-	orchestrator   *agentruntime.Orchestrator
-	sessionService *SessionService
-	modelRouter    ports.ModelRouter
+	orchestrator     *agentruntime.Orchestrator
+	sessionService   *SessionService
+	modelRouter      ports.ModelRouter
+	responseComposer ports.ResponseComposer
 }
 
 // capabilityRegistry 是本文件用到的最小能力注册接口
@@ -81,9 +82,10 @@ func NewAgentService(
 	)
 
 	return &AgentService{
-		orchestrator:   orchestrator,
-		sessionService: sessionService,
-		modelRouter:    modelRouter,
+		orchestrator:     orchestrator,
+		sessionService:   sessionService,
+		modelRouter:      modelRouter,
+		responseComposer: responseComposer,
 	}
 }
 
@@ -179,17 +181,15 @@ func (s *AgentService) RunStream(
 		runtimeCtx.Variables = map[string]any{}
 	}
 
-	writer.WriteEvent("plan", "starting orchestrator")
+	publisher := httpapi.NewSSEPublisher(writer)
 
-	// 第一阶段增强：
-	// 对纯文本生成请求，直接走模型流式输出。
-	// 对复杂工作流，仍走原有编排结果输出。
 	intentResult, err := s.orchestratorIntentOnly(ctx, runtimeCtx, message)
 	if err != nil {
 		writer.WriteEvent("error", err.Error())
 		return
 	}
 
+	// chat / write 仍然优先直接走模型 token streaming
 	if intentResult.IntentType == agent.IntentChat || intentResult.IntentType == agent.IntentWrite {
 		prompt := "请回答用户请求：\n" + message
 
@@ -199,7 +199,7 @@ func (s *AgentService) RunStream(
 			return
 		}
 
-		if err := s.sessionService.SaveAssistantMessage(ctx, reqCtx.SessionID, "[streamed response saved separately if needed]"); err != nil {
+		if err := s.sessionService.SaveAssistantMessage(ctx, reqCtx.SessionID, "[streamed response]"); err != nil {
 			writer.WriteEvent("error", err.Error())
 			return
 		}
@@ -208,18 +208,20 @@ func (s *AgentService) RunStream(
 		return
 	}
 
-	resp, results, err := s.orchestrator.Run(ctx, runtimeCtx, message)
+	// workflow / rag / tool 使用事件版执行
+	resp, results, err := s.orchestrator.RunWithEvents(ctx, runtimeCtx, message, publisher)
 	if err != nil {
 		writer.WriteEvent("error", err.Error())
 		return
 	}
 
-	for _, result := range results {
-		if result.Success {
-			writer.WriteEvent("step_done", result.StepID)
-		} else {
-			writer.WriteEvent("step_error", result.StepID+":"+result.Error)
-		}
+	// 先发一个标记，前端可切换成“最终回答中”
+	writer.WriteEvent("final_answer_start", "streaming")
+
+	if err := s.streamWorkflowFinalAnswer(ctx, runtimeCtx, message, results, writer); err != nil {
+		// 如果流式最终回答失败，回退为一次性输出
+		writer.WriteEvent("final_answer_fallback", resp.Message)
+		writer.WriteToken(resp.Message)
 	}
 
 	if err := s.sessionService.SaveAssistantMessage(ctx, reqCtx.SessionID, resp.Message); err != nil {
@@ -228,13 +230,11 @@ func (s *AgentService) RunStream(
 	}
 
 	conversationState.Variables = runtimeCtx.Variables
-
 	if err := s.sessionService.SaveConversationState(ctx, conversationState); err != nil {
 		writer.WriteEvent("error", err.Error())
 		return
 	}
 
-	writer.WriteToken(resp.Message)
 	writer.WriteEvent("done", "completed")
 }
 
@@ -262,6 +262,36 @@ func (s *AgentService) streamDirectModel(
 
 	return s.modelRouter.GenerateStream(ctx, runtimeCtx, ports.ModelCallRequest{
 		TaskType: "llm_generate",
+		Prompt:   prompt,
+		Stream:   true,
+	}, func(text string) error {
+		writer.WriteToken(text)
+		return nil
+	})
+}
+
+func (s *AgentService) streamWorkflowFinalAnswer(
+	ctx context.Context,
+	runtimeCtx agent.RuntimeContext,
+	message string,
+	results []agent.StepResult,
+	writer *httpapi.StreamWriter,
+) error {
+	if s.modelRouter == nil || s.responseComposer == nil {
+		return fmt.Errorf("model router or response composer is nil")
+	}
+
+	prompt, err := s.responseComposer.BuildPrompt(ctx, runtimeCtx, ports.ComposeRequest{
+		Message:     message,
+		PromptName:  "final_response",
+		StepResults: results,
+	})
+	if err != nil {
+		return err
+	}
+
+	return s.modelRouter.GenerateStream(ctx, runtimeCtx, ports.ModelCallRequest{
+		TaskType: "retrieve_answer",
 		Prompt:   prompt,
 		Stream:   true,
 	}, func(text string) error {

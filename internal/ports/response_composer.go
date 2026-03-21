@@ -25,4 +25,5 @@ type ComposeResponse struct {
 // ResponseComposer 定义最终回答生成器接口
 type ResponseComposer interface {
 	Compose(ctx context.Context, runtimeCtx agent.RuntimeContext, req ComposeRequest) (ComposeResponse, error)
+	BuildPrompt(ctx context.Context, runtimeCtx agent.RuntimeContext, req ComposeRequest) (string, error)
 }

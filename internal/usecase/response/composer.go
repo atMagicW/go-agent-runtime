@@ -28,34 +28,9 @@ func (c *TemplateResponseComposer) Compose(
 	runtimeCtx agent.RuntimeContext,
 	req ports.ComposeRequest,
 ) (ports.ComposeResponse, error) {
-	var promptContent string
-
-	if req.PromptVer != "" {
-		tpl, err := c.promptRepo.GetByNameAndVersion(ctx, req.PromptName, req.PromptVer)
-		if err != nil {
-			return ports.ComposeResponse{}, err
-		}
-		promptContent = tpl.Content
-	} else {
-		tpl, err := c.promptRepo.GetLatestByName(ctx, req.PromptName)
-		if err != nil {
-			return ports.ComposeResponse{}, err
-		}
-		promptContent = tpl.Content
-	}
-
-	data := TemplateData{
-		Message:               req.Message,
-		Intent:                string(runtimeCtx.Intent.IntentType),
-		StepResultsText:       c.buildStepResultsText(req.StepResults),
-		EvidencesText:         c.buildEvidencesText(req.StepResults),
-		CapabilityResultsText: c.buildCapabilityResultsText(req.StepResults),
-	}
-
-	renderedPrompt, err := RenderTemplate(promptContent, data)
+	renderedPrompt, err := c.BuildPrompt(ctx, runtimeCtx, req)
 	if err != nil {
-		// 模板渲染失败时退化成基础文本
-		renderedPrompt = c.buildFallbackPrompt(data)
+		return ports.ComposeResponse{}, err
 	}
 
 	text := c.extractSummary(req.StepResults)
@@ -207,6 +182,43 @@ func (c *TemplateResponseComposer) buildFallbackPrompt(data TemplateData) string
 
 	sb.WriteString("请基于以上信息生成最终回答。")
 	return sb.String()
+}
+
+func (c *TemplateResponseComposer) BuildPrompt(
+	ctx context.Context,
+	runtimeCtx agent.RuntimeContext,
+	req ports.ComposeRequest,
+) (string, error) {
+	var promptContent string
+
+	if req.PromptVer != "" {
+		tpl, err := c.promptRepo.GetByNameAndVersion(ctx, req.PromptName, req.PromptVer)
+		if err != nil {
+			return "", err
+		}
+		promptContent = tpl.Content
+	} else {
+		tpl, err := c.promptRepo.GetLatestByName(ctx, req.PromptName)
+		if err != nil {
+			return "", err
+		}
+		promptContent = tpl.Content
+	}
+
+	data := TemplateData{
+		Message:               req.Message,
+		Intent:                string(runtimeCtx.Intent.IntentType),
+		StepResultsText:       c.buildStepResultsText(req.StepResults),
+		EvidencesText:         c.buildEvidencesText(req.StepResults),
+		CapabilityResultsText: c.buildCapabilityResultsText(req.StepResults),
+	}
+
+	renderedPrompt, err := RenderTemplate(promptContent, data)
+	if err != nil {
+		return c.buildFallbackPrompt(data), nil
+	}
+
+	return renderedPrompt, nil
 }
 
 // extractSummary 优先抽取适合作为最终回答的文本

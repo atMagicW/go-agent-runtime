@@ -5,7 +5,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	httpapi "github.com/atMagicW/go-agent-runtime/api/sse"
 	"github.com/gin-gonic/gin"
 )
 
@@ -14,8 +13,8 @@ type mockSessionService struct{}
 type mockCapabilityService struct{}
 type mockIngestService struct{}
 
-func (m *mockAgentService) Run(reqCtx any, message string) (any, error)                        { return nil, nil }
-func (m *mockAgentService) RunStream(reqCtx any, message string, writer *httpapi.StreamWriter) {}
+func (m *mockAgentService) Run(reqCtx any, message string) (any, error)                { return nil, nil }
+func (m *mockAgentService) RunStream(reqCtx any, message string, writer *StreamWriter) {}
 
 func TestHealthHandler(t *testing.T) {
 	gin.SetMode(gin.TestMode)
