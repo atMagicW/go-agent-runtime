@@ -6,6 +6,7 @@ import (
 	"time"
 
 	promptrepo "github.com/atMagicW/go-agent-runtime/internal/adapters/prompt"
+	openaiembedding "github.com/atMagicW/go-agent-runtime/internal/adapters/rag/openai_embedding"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
@@ -91,7 +92,19 @@ func main() {
 
 	// 初始化 RAG
 	ragRepo := pgrag.NewRepository(db)
-	embeddingProvider := mockembedding.NewProvider(appCfg.RAG.EmbeddingDim)
+
+	var embeddingProvider ports.EmbeddingProvider
+	switch appCfg.RAG.EmbeddingProvider {
+	case "openai":
+		embeddingProvider = openaiembedding.NewProvider(
+			appCfg.LLM.OpenAIAPIKey,
+			appCfg.RAG.EmbeddingModel,
+			appCfg.RAG.EmbeddingDim,
+		)
+	default:
+		embeddingProvider = mockembedding.NewProvider(appCfg.RAG.EmbeddingDim)
+	}
+
 	var reranker ports.Reranker
 	if appCfg.RAG.RerankEnabled {
 		reranker = rerankadapter.NewSimpleReranker()

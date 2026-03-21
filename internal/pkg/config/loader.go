@@ -25,9 +25,11 @@ type Config struct {
 	} `yaml:"llm"`
 
 	RAG struct {
-		DefaultTopK   int  `yaml:"default_top_k"`
-		EmbeddingDim  int  `yaml:"embedding_dim"`
-		RerankEnabled bool `yaml:"rerank_enabled"`
+		DefaultTopK       int    `yaml:"default_top_k"`
+		EmbeddingDim      int    `yaml:"embedding_dim"`
+		RerankEnabled     bool   `yaml:"rerank_enabled"`
+		EmbeddingProvider string `yaml:"embedding_provider"`
+		EmbeddingModel    string `yaml:"embedding_model"`
 	} `yaml:"rag"`
 
 	TextSplitter struct {
@@ -85,6 +87,14 @@ func applyDefaults(cfg *Config) {
 
 	if cfg.RAG.EmbeddingDim <= 0 {
 		cfg.RAG.EmbeddingDim = 1536
+	}
+
+	if cfg.RAG.EmbeddingProvider == "" {
+		cfg.RAG.EmbeddingProvider = "openai"
+	}
+
+	if cfg.RAG.EmbeddingModel == "" {
+		cfg.RAG.EmbeddingModel = "text-embedding-3-small"
 	}
 
 	if cfg.TextSplitter.ChunkSize <= 0 {
