@@ -9,15 +9,18 @@ import (
 	"github.com/openai/openai-go/v3/option"
 )
 
-// Provider 是基于 OpenAI 官方 Go SDK 的 Embedding Provider
-type Provider struct {
-	client openai.Client
-	model  string
-	dim    int
+type CostCalculator interface {
+	CalcEmbeddingCost(model string, inputTokens int) float64
 }
 
-// NewProvider 创建 OpenAI Embedding Provider
-func NewProvider(apiKey string, model string, dim int) *Provider {
+type Provider struct {
+	client  openai.Client
+	model   string
+	dim     int
+	pricing CostCalculator
+}
+
+func NewProvider(apiKey string, model string, dim int, pricing CostCalculator) *Provider {
 	var c openai.Client
 	if strings.TrimSpace(apiKey) != "" {
 		c = openai.NewClient(option.WithAPIKey(apiKey))
@@ -30,9 +33,10 @@ func NewProvider(apiKey string, model string, dim int) *Provider {
 	}
 
 	return &Provider{
-		client: c,
-		model:  model,
-		dim:    dim,
+		client:  c,
+		model:   model,
+		dim:     dim,
+		pricing: pricing,
 	}
 }
 
@@ -68,6 +72,10 @@ func (p *Provider) Embed(ctx context.Context, text string) ([]float32, error) {
 	for i, v := range raw {
 		out[i] = float32(v)
 	}
+
+	// 这里如果你后面要把 embedding cost 也落库，
+	// 可以把 resp.Usage.PromptTokens 往外透出。
+	_ = resp
 
 	return out, nil
 }

@@ -53,6 +53,10 @@ func main() {
 	if err != nil {
 		logger.Fatal("load fallback config failed", zap.Error(err))
 	}
+	pricingCfg, err := config.LoadPricing("configs/pricing.yaml")
+	if err != nil {
+		logger.Fatal("load pricing config failed", zap.Error(err))
+	}
 
 	if appCfg.Database.PostgresDSN == "" {
 		logger.Fatal("postgres dsn is empty")
@@ -75,7 +79,9 @@ func main() {
 
 	modelRegistry := app.NewModelRegistry(modelCfg)
 
-	openAIClient := openaiadapter.NewClient(appCfg.LLM.OpenAIAPIKey)
+	pricingService := app.NewPricingService(pricingCfg)
+
+	openAIClient := openaiadapter.NewClient(appCfg.LLM.OpenAIAPIKey, pricingService)
 	llmClients := map[string]ports.LLMClient{
 		"openai": openAIClient,
 	}
@@ -100,6 +106,7 @@ func main() {
 			appCfg.LLM.OpenAIAPIKey,
 			appCfg.RAG.EmbeddingModel,
 			appCfg.RAG.EmbeddingDim,
+			pricingService,
 		)
 	default:
 		embeddingProvider = mockembedding.NewProvider(appCfg.RAG.EmbeddingDim)

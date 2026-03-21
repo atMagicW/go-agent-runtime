@@ -12,13 +12,16 @@ import (
 	"github.com/atMagicW/go-agent-runtime/internal/ports"
 )
 
-// Client 是 OpenAI 的适配器实现
-type Client struct {
-	client openai.Client
+type CostCalculator interface {
+	CalcLLMCost(model string, inputTokens, outputTokens int) float64
 }
 
-// NewClient 创建 OpenAI 客户端
-func NewClient(apiKey string) *Client {
+type Client struct {
+	client  openai.Client
+	pricing CostCalculator
+}
+
+func NewClient(apiKey string, pricing CostCalculator) *Client {
 	var c openai.Client
 	if strings.TrimSpace(apiKey) != "" {
 		c = openai.NewClient(option.WithAPIKey(apiKey))
@@ -27,11 +30,11 @@ func NewClient(apiKey string) *Client {
 	}
 
 	return &Client{
-		client: c,
+		client:  c,
+		pricing: pricing,
 	}
 }
 
-// Generate 同步生成
 func (c *Client) Generate(ctx context.Context, req ports.LLMGenerateRequest) (ports.LLMGenerateResponse, error) {
 	if strings.TrimSpace(req.Prompt) == "" {
 		return ports.LLMGenerateResponse{}, fmt.Errorf("prompt is empty")
@@ -53,70 +56,48 @@ func (c *Client) Generate(ctx context.Context, req ports.LLMGenerateRequest) (po
 	}
 
 	text := resp.OutputText()
-	promptTokens := estimateTokens(req.Prompt)
-	completionTokens := estimateTokens(text)
+
+	// 优先使用 SDK 返回的 usage；如果本地版本字段不同，只改这一处即可。
+	inputTokens := 0
+	outputTokens := 0
+	totalTokens := 0
+
+	// 当前官方 SDK 文档/类型中有 ResponseUsage。实际字段名若随版本有细微变化，保留这一层适配。:contentReference[oaicite:2]{index=2}
+	if resp.Usage.InputTokens > 0 {
+		inputTokens = int(resp.Usage.InputTokens)
+	}
+	if resp.Usage.OutputTokens > 0 {
+		outputTokens = int(resp.Usage.OutputTokens)
+	}
+	if resp.Usage.TotalTokens > 0 {
+		totalTokens = int(resp.Usage.TotalTokens)
+	}
+
+	// SDK usage 取不到时再退回估算
+	if inputTokens == 0 {
+		inputTokens = estimateTokens(req.Prompt)
+	}
+	if outputTokens == 0 {
+		outputTokens = estimateTokens(text)
+	}
+	if totalTokens == 0 {
+		totalTokens = inputTokens + outputTokens
+	}
+
+	cost := 0.0
+	if c.pricing != nil {
+		cost = c.pricing.CalcLLMCost(modelName, inputTokens, outputTokens)
+	}
 
 	return ports.LLMGenerateResponse{
 		Text:             text,
-		PromptTokens:     promptTokens,
-		CompletionTokens: completionTokens,
-		TotalTokens:      promptTokens + completionTokens,
-		Cost:             estimateOpenAICost(modelName, promptTokens, completionTokens),
+		PromptTokens:     inputTokens,
+		CompletionTokens: outputTokens,
+		TotalTokens:      totalTokens,
+		Cost:             cost,
 		Model:            modelName,
 		Provider:         "openai",
 	}, nil
-}
-
-// GenerateStream 流式生成
-func (c *Client) GenerateStream(ctx context.Context, req ports.LLMGenerateRequest, onChunk ports.StreamHandler) error {
-	if strings.TrimSpace(req.Prompt) == "" {
-		return fmt.Errorf("prompt is empty")
-	}
-	if onChunk == nil {
-		return fmt.Errorf("stream handler is nil")
-	}
-
-	modelName := req.Model
-	if strings.TrimSpace(modelName) == "" {
-		modelName = "gpt-4.1-mini"
-	}
-
-	stream := c.client.Responses.NewStreaming(ctx, responses.ResponseNewParams{
-		Input: responses.ResponseNewParamsInputUnion{
-			OfString: openai.String(req.Prompt),
-		},
-		Model: openai.ChatModel(modelName),
-	})
-	defer stream.Close()
-
-	for stream.Next() {
-		event := stream.Current()
-
-		// 第一版先宽松处理：
-		// 只要事件里能提取到增量文本，就推给上层。
-		// 所以这里用字符串化兜底不太好，优先走常见文本增量字段。
-		if delta := extractTextDelta(event); delta != "" {
-			if err := onChunk(ports.StreamChunk{Text: delta}); err != nil {
-				return err
-			}
-		}
-	}
-
-	if err := stream.Err(); err != nil {
-		return err
-	}
-
-	return onChunk(ports.StreamChunk{Done: true})
-}
-
-// extractTextDelta 从 streaming event 中提取文本增量
-func extractTextDelta(event responses.ResponseStreamEventUnion) string {
-	// 这里根据 SDK 常见 Responses streaming 事件做兼容。
-	// 如果你本地 SDK 版本字段略有差异，只需要改这里。
-	if event.Type == "response.output_text.delta" {
-		return event.AsResponseOutputTextDelta().Delta
-	}
-	return ""
 }
 
 func estimateTokens(text string) int {
@@ -128,15 +109,4 @@ func estimateTokens(text string) int {
 		return 1
 	}
 	return n
-}
-
-func estimateOpenAICost(model string, promptTokens, completionTokens int) float64 {
-	switch model {
-	case "gpt-4.1":
-		return float64(promptTokens+completionTokens) * 0.00001
-	case "gpt-4.1-mini":
-		return float64(promptTokens+completionTokens) * 0.000002
-	default:
-		return float64(promptTokens+completionTokens) * 0.000003
-	}
 }
