@@ -13,6 +13,7 @@ llm:
 rag:
   default_top_k: 5
   embedding_dim: 1536
+  rerank_enabled: true
 
 text_splitter:
   chunk_size: 300

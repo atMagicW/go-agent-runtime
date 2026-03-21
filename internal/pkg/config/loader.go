@@ -25,8 +25,9 @@ type Config struct {
 	} `yaml:"llm"`
 
 	RAG struct {
-		DefaultTopK  int `yaml:"default_top_k"`
-		EmbeddingDim int `yaml:"embedding_dim"`
+		DefaultTopK   int  `yaml:"default_top_k"`
+		EmbeddingDim  int  `yaml:"embedding_dim"`
+		RerankEnabled bool `yaml:"rerank_enabled"`
 	} `yaml:"rag"`
 
 	TextSplitter struct {

@@ -15,6 +15,7 @@ import (
 	pgrepo "github.com/atMagicW/go-agent-runtime/internal/adapters/persistence/postgres"
 	mockembedding "github.com/atMagicW/go-agent-runtime/internal/adapters/rag/mock_embedding"
 	pgrag "github.com/atMagicW/go-agent-runtime/internal/adapters/rag/pgvector"
+	rerankadapter "github.com/atMagicW/go-agent-runtime/internal/adapters/rag/rerank"
 	"github.com/atMagicW/go-agent-runtime/internal/app"
 	"github.com/atMagicW/go-agent-runtime/internal/pkg/config"
 	"github.com/atMagicW/go-agent-runtime/internal/pkg/textsplitter"
@@ -91,7 +92,11 @@ func main() {
 	// 初始化 RAG
 	ragRepo := pgrag.NewRepository(db)
 	embeddingProvider := mockembedding.NewProvider(appCfg.RAG.EmbeddingDim)
-	ragService := app.NewRAGService(ragRepo, embeddingProvider)
+	var reranker ports.Reranker
+	if appCfg.RAG.RerankEnabled {
+		reranker = rerankadapter.NewSimpleReranker()
+	}
+	ragService := app.NewRAGService(ragRepo, embeddingProvider, reranker)
 
 	splitter := textsplitter.NewSplitter(appCfg.TextSplitter.ChunkSize, appCfg.TextSplitter.Overlap)
 	ingestService := app.NewIngestService(ragRepo, embeddingProvider, splitter)
