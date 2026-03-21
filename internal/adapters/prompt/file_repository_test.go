@@ -34,17 +34,18 @@ func TestFileRepository_LoadAndQuery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetLatestByName failed: %v", err)
 	}
-
 	if latest.Version != "v2" {
 		t.Fatalf("latest version = %s, want v2", latest.Version)
 	}
+	t.Log(latest.Content)
 
-	items, err := repo.ListByName(context.Background(), "final_response")
+	v1, err := repo.GetByNameAndVersion(context.Background(), "final_response", "v1")
 	if err != nil {
-		t.Fatalf("ListByName failed: %v", err)
+		t.Fatalf("GetByNameAndVersion failed: %v", err)
 	}
+	if v1.Content != "v1 content" {
+		t.Fatalf("v1 content mismatch: %s", v1.Content)
+	}
+	t.Log(v1.Content)
 
-	if len(items) != 2 {
-		t.Fatalf("len(items) = %d, want 2", len(items))
-	}
 }
