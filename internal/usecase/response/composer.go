@@ -10,7 +10,7 @@ import (
 	"github.com/atMagicW/go-agent-runtime/internal/ports"
 )
 
-// TemplateResponseComposer 是基于 Prompt 模板的第一版最终回答生成器
+// TemplateResponseComposer 是基于 Prompt 模板的最终回答生成器
 type TemplateResponseComposer struct {
 	promptRepo ports.PromptRepository
 }
@@ -28,28 +28,40 @@ func (c *TemplateResponseComposer) Compose(
 	runtimeCtx agent.RuntimeContext,
 	req ports.ComposeRequest,
 ) (ports.ComposeResponse, error) {
-	var (
-		promptContent string
-	)
+	var promptContent string
 
-	// 优先按指定版本获取，否则取最新版本
 	if req.PromptVer != "" {
-		tpl, getErr := c.promptRepo.GetByNameAndVersion(ctx, req.PromptName, req.PromptVer)
-		if getErr != nil {
-			return ports.ComposeResponse{}, getErr
+		tpl, err := c.promptRepo.GetByNameAndVersion(ctx, req.PromptName, req.PromptVer)
+		if err != nil {
+			return ports.ComposeResponse{}, err
 		}
 		promptContent = tpl.Content
 	} else {
-		tpl, getErr := c.promptRepo.GetLatestByName(ctx, req.PromptName)
-		if getErr != nil {
-			return ports.ComposeResponse{}, getErr
+		tpl, err := c.promptRepo.GetLatestByName(ctx, req.PromptName)
+		if err != nil {
+			return ports.ComposeResponse{}, err
 		}
 		promptContent = tpl.Content
 	}
 
-	// 第一版先不做真正模板渲染引擎，
-	// 而是把模板文本 + 用户消息 + step 结果拼接成可读结果。
-	text := c.buildFinalText(promptContent, runtimeCtx, req)
+	data := TemplateData{
+		Message:               req.Message,
+		Intent:                string(runtimeCtx.Intent.IntentType),
+		StepResultsText:       c.buildStepResultsText(req.StepResults),
+		EvidencesText:         c.buildEvidencesText(req.StepResults),
+		CapabilityResultsText: c.buildCapabilityResultsText(req.StepResults),
+	}
+
+	renderedPrompt, err := RenderTemplate(promptContent, data)
+	if err != nil {
+		// 模板渲染失败时退化成基础文本
+		renderedPrompt = c.buildFallbackPrompt(data)
+	}
+
+	text := c.extractSummary(req.StepResults)
+	if text == "" {
+		text = renderedPrompt
+	}
 
 	return ports.ComposeResponse{
 		Text:   text,
@@ -59,62 +71,146 @@ func (c *TemplateResponseComposer) Compose(
 	}, nil
 }
 
-// buildFinalText 构造最终文本
-func (c *TemplateResponseComposer) buildFinalText(
-	promptContent string,
-	runtimeCtx agent.RuntimeContext,
-	req ports.ComposeRequest,
-) string {
-	var sb strings.Builder
-
-	sb.WriteString("【系统模板】\n")
-	sb.WriteString(promptContent)
-	sb.WriteString("\n\n")
-
-	sb.WriteString("【用户请求】\n")
-	sb.WriteString(req.Message)
-	sb.WriteString("\n\n")
-
-	if runtimeCtx.Intent.IntentType != "" {
-		sb.WriteString("【识别意图】\n")
-		sb.WriteString(string(runtimeCtx.Intent.IntentType))
-		sb.WriteString("\n\n")
+// buildStepResultsText 将步骤结果转成可读文本
+func (c *TemplateResponseComposer) buildStepResultsText(results []agent.StepResult) string {
+	if len(results) == 0 {
+		return "无"
 	}
 
-	sb.WriteString("【执行结果汇总】\n")
-
-	for i, result := range req.StepResults {
-		sb.WriteString(fmt.Sprintf("%d. 步骤ID=%s\n", i+1, result.StepID))
-		sb.WriteString(fmt.Sprintf("   成功=%v\n", result.Success))
+	var sb strings.Builder
+	for i, result := range results {
+		sb.WriteString(fmt.Sprintf("%d. step_id=%s success=%v\n", i+1, result.StepID, result.Success))
 
 		if result.Error != "" {
-			sb.WriteString(fmt.Sprintf("   错误=%s\n", result.Error))
+			sb.WriteString("   error=")
+			sb.WriteString(result.Error)
+			sb.WriteString("\n")
 		}
 
 		if len(result.Output) > 0 {
 			raw, _ := json.Marshal(result.Output)
-			sb.WriteString(fmt.Sprintf("   输出=%s\n", string(raw)))
+			sb.WriteString("   output=")
+			sb.WriteString(string(raw))
+			sb.WriteString("\n")
 		}
-
-		sb.WriteString("\n")
-	}
-
-	// 额外尝试从步骤结果里提取更“像回答”的内容
-	summary := c.extractSummary(req.StepResults)
-	if summary != "" {
-		sb.WriteString("【最终回答】\n")
-		sb.WriteString(summary)
-	} else {
-		sb.WriteString("【最终回答】\n")
-		sb.WriteString("已根据执行步骤完成处理。你可以继续追问更细的内容。")
 	}
 
 	return sb.String()
 }
 
-// extractSummary 优先抽取更适合作为最终回答的文本
+// buildEvidencesText 提取检索证据
+func (c *TemplateResponseComposer) buildEvidencesText(results []agent.StepResult) string {
+	lines := make([]string, 0)
+
+	for _, result := range results {
+		if !result.Success {
+			continue
+		}
+
+		raw, ok := result.Output["evidences"]
+		if !ok {
+			continue
+		}
+
+		items, ok := raw.([]map[string]any)
+		if ok {
+			for _, item := range items {
+				content, _ := item["content"].(string)
+				kb, _ := item["kb"].(string)
+				if content != "" {
+					lines = append(lines, fmt.Sprintf("[kb=%s] %s", kb, content))
+				}
+			}
+			continue
+		}
+
+		// 兼容经过 interface{} 传递后的情况
+		if list, ok := raw.([]any); ok {
+			for _, one := range list {
+				if item, ok := one.(map[string]any); ok {
+					content, _ := item["content"].(string)
+					kb, _ := item["kb"].(string)
+					if content != "" {
+						lines = append(lines, fmt.Sprintf("[kb=%s] %s", kb, content))
+					}
+				}
+			}
+		}
+	}
+
+	if len(lines) == 0 {
+		return "无"
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+// buildCapabilityResultsText 提取能力结果
+func (c *TemplateResponseComposer) buildCapabilityResultsText(results []agent.StepResult) string {
+	lines := make([]string, 0)
+
+	for _, result := range results {
+		if !result.Success {
+			continue
+		}
+
+		name, _ := result.Output["capability_name"].(string)
+		kind, _ := result.Output["kind"].(string)
+
+		if name == "" {
+			continue
+		}
+
+		if summary, ok := result.Output["result"].(string); ok && summary != "" {
+			lines = append(lines, fmt.Sprintf("[%s/%s] %s", kind, name, summary))
+			continue
+		}
+
+		raw, _ := json.Marshal(result.Output)
+		lines = append(lines, fmt.Sprintf("[%s/%s] %s", kind, name, string(raw)))
+	}
+
+	if len(lines) == 0 {
+		return "无"
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+// buildFallbackPrompt 模板渲染失败时使用的降级文本
+func (c *TemplateResponseComposer) buildFallbackPrompt(data TemplateData) string {
+	var sb strings.Builder
+
+	sb.WriteString("用户请求：\n")
+	sb.WriteString(data.Message)
+	sb.WriteString("\n\n")
+
+	sb.WriteString("识别意图：\n")
+	sb.WriteString(data.Intent)
+	sb.WriteString("\n\n")
+
+	sb.WriteString("步骤结果：\n")
+	sb.WriteString(data.StepResultsText)
+	sb.WriteString("\n\n")
+
+	if data.EvidencesText != "无" {
+		sb.WriteString("知识证据：\n")
+		sb.WriteString(data.EvidencesText)
+		sb.WriteString("\n\n")
+	}
+
+	if data.CapabilityResultsText != "无" {
+		sb.WriteString("能力结果：\n")
+		sb.WriteString(data.CapabilityResultsText)
+		sb.WriteString("\n\n")
+	}
+
+	sb.WriteString("请基于以上信息生成最终回答。")
+	return sb.String()
+}
+
+// extractSummary 优先抽取适合作为最终回答的文本
 func (c *TemplateResponseComposer) extractSummary(results []agent.StepResult) string {
-	// 从后往前找，优先使用最后一个成功步骤的 text / result
 	for i := len(results) - 1; i >= 0; i-- {
 		r := results[i]
 		if !r.Success {
