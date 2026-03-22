@@ -44,7 +44,12 @@ func NewAgentService(
 	breakers *agentgov.BreakerRegistry,
 	fallbacks *agentgov.FallbackPolicy,
 ) *AgentService {
-	intentEngine := agentintent.NewEngine()
+	ruleClassifier := agentintent.NewRuleClassifier()
+	llmClassifier := agentintent.NewLLMClassifier(modelRouter)
+	intentEngine := agentintent.NewEngine(
+		ruleClassifier,
+		llmClassifier,
+	)
 	planner := agentplanner.NewPlanner()
 
 	capabilityRouter := agentrouter.NewCapabilityRouter(registry, breakers, fallbacks)

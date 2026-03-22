@@ -2,79 +2,48 @@ package intent
 
 import (
 	"context"
-	"strings"
 
 	"github.com/atMagicW/go-agent-runtime/internal/domain/agent"
+	"github.com/atMagicW/go-agent-runtime/internal/ports"
 )
 
-// Engine 是意图识别器的第一版实现
+// Engine 是组合式意图识别器
 type Engine struct {
+	classifiers []ports.IntentClassifier
 }
 
-// NewEngine 创建意图识别器
-func NewEngine() *Engine {
-	return &Engine{}
-}
-
-// Recognize 识别用户意图
-func (e *Engine) Recognize(_ context.Context, _ agent.RuntimeContext, message string) (agent.IntentResult, error) {
-	lower := strings.ToLower(message)
-
-	// 第一版：规则优先
-	switch {
-	case strings.Contains(lower, "知识库") || strings.Contains(lower, "检索") || strings.Contains(lower, "rag"):
-		return agent.IntentResult{
-			IntentType:         agent.IntentRetrievalQA,
-			Confidence:         0.90,
-			RequiresRAG:        true,
-			RequiresPlanning:   false,
-			RequiresCapability: false,
-			ResponseMode:       "text",
-			Slots:              map[string]any{},
-		}, nil
-
-	case strings.Contains(lower, "调用工具") || strings.Contains(lower, "skill") || strings.Contains(lower, "mcp") || strings.Contains(lower, "tool"):
-		return agent.IntentResult{
-			IntentType:         agent.IntentToolCall,
-			Confidence:         0.88,
-			RequiresRAG:        false,
-			RequiresPlanning:   false,
-			RequiresCapability: true,
-			ResponseMode:       "text",
-			Slots:              map[string]any{},
-		}, nil
-
-	case strings.Contains(lower, "分析") || strings.Contains(lower, "规划") || strings.Contains(lower, "一步一步"):
-		return agent.IntentResult{
-			IntentType:         agent.IntentWorkflow,
-			Confidence:         0.92,
-			RequiresRAG:        true,
-			RequiresPlanning:   true,
-			RequiresCapability: true,
-			ResponseMode:       "text",
-			Slots:              map[string]any{},
-		}, nil
-
-	case strings.Contains(lower, "写") || strings.Contains(lower, "润色") || strings.Contains(lower, "改写"):
-		return agent.IntentResult{
-			IntentType:         agent.IntentWrite,
-			Confidence:         0.86,
-			RequiresRAG:        false,
-			RequiresPlanning:   false,
-			RequiresCapability: false,
-			ResponseMode:       "text",
-			Slots:              map[string]any{},
-		}, nil
-
-	default:
-		return agent.IntentResult{
-			IntentType:         agent.IntentChat,
-			Confidence:         0.75,
-			RequiresRAG:        false,
-			RequiresPlanning:   false,
-			RequiresCapability: false,
-			ResponseMode:       "text",
-			Slots:              map[string]any{},
-		}, nil
+// NewEngine 创建默认意图识别器
+func NewEngine(classifiers ...ports.IntentClassifier) *Engine {
+	return &Engine{
+		classifiers: classifiers,
 	}
+}
+
+// Recognize 依次执行多个分类器
+func (e *Engine) Recognize(
+	ctx context.Context,
+	runtimeCtx agent.RuntimeContext,
+	message string,
+) (agent.IntentResult, error) {
+	for _, classifier := range e.classifiers {
+		result, ok, err := classifier.Classify(ctx, runtimeCtx, message)
+		if err != nil {
+			// 单个分类器失败时不立刻中断，继续尝试下一个
+			continue
+		}
+		if ok {
+			return result, nil
+		}
+	}
+
+	// 最终兜底
+	return agent.IntentResult{
+		IntentType:         agent.IntentChat,
+		Confidence:         0.50,
+		RequiresRAG:        false,
+		RequiresPlanning:   false,
+		RequiresCapability: false,
+		ResponseMode:       "text",
+		Slots:              map[string]any{},
+	}, nil
 }
