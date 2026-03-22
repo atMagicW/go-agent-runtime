@@ -7,6 +7,14 @@ llm_pricing:
     input_per_million: 0.40
     output_per_million: 1.60
 
+  deepseek-chat:
+    input_per_million: 0.0
+    output_per_million: 0.0
+
+  deepseek-reasoner:
+    input_per_million: 0.0
+    output_per_million: 0.0
+
 embedding_pricing:
   text-embedding-3-small:
     input_per_million: 0.02

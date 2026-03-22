@@ -8,6 +8,8 @@ database:
 
 llm:
   openai_api_key: ""
+  deepseek_api_key: ""
+  deepseek_base_url: "https://api.deepseek.com"
   default_model: "gpt-4.1-mini"
 
 rag:

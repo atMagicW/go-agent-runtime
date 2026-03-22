@@ -20,8 +20,10 @@ type Config struct {
 	} `yaml:"database"`
 
 	LLM struct {
-		OpenAIAPIKey string `yaml:"openai_api_key"`
-		DefaultModel string `yaml:"default_model"`
+		OpenAIAPIKey    string `yaml:"openai_api_key"`
+		DeepSeekAPIKey  string `yaml:"deepseek_api_key"`
+		DeepSeekBaseURL string `yaml:"deepseek_base_url"`
+		DefaultModel    string `yaml:"default_model"`
 	} `yaml:"llm"`
 
 	RAG struct {
@@ -64,6 +66,16 @@ func applyEnvOverrides(cfg *Config) {
 
 	if v := os.Getenv("OPENAI_API_KEY"); v != "" {
 		cfg.LLM.OpenAIAPIKey = v
+	}
+	if v := os.Getenv("DEEPSEEK_API_KEY"); v != "" {
+		cfg.LLM.DeepSeekAPIKey = v
+	}
+
+	if v := os.Getenv("DEEPSEEK_BASE_URL"); v != "" {
+		cfg.LLM.DeepSeekBaseURL = v
+	}
+	if cfg.LLM.DeepSeekBaseURL == "" {
+		cfg.LLM.DeepSeekBaseURL = "https://api.deepseek.com"
 	}
 
 	if v := os.Getenv("APP_ENV"); v != "" {

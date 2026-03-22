@@ -7,6 +7,7 @@ task_type_to_tag:
   retrieve_answer: "retrieval_answer"
   analysis: "analysis"
   write: "write"
+  reasoning: "reasoning"
 
 models:
   - name: "gpt-4.1"
@@ -18,3 +19,13 @@ models:
     provider: "openai"
     enabled: true
     tags: ["intent", "chat", "low_cost"]
+
+  - name: "deepseek-chat"
+    provider: "deepseek"
+    enabled: true
+    tags: ["chat", "write", "retrieval_answer", "low_cost"]
+
+  - name: "deepseek-reasoner"
+    provider: "deepseek"
+    enabled: true
+    tags: ["analysis", "reasoning"]
