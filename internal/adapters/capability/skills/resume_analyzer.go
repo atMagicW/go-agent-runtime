@@ -9,22 +9,39 @@ import (
 
 // ResumeAnalyzerSkill 是一个本地简历分析 Skill
 type ResumeAnalyzerSkill struct {
+	def capability.SkillDefinition
 }
 
 // NewResumeAnalyzerSkill 创建简历分析 Skill
-func NewResumeAnalyzerSkill() *ResumeAnalyzerSkill {
-	return &ResumeAnalyzerSkill{}
+func NewResumeAnalyzerSkill(def capability.SkillDefinition) *ResumeAnalyzerSkill {
+	return &ResumeAnalyzerSkill{
+		def: def,
+	}
 }
 
 // Descriptor 返回 Skill 元信息
 func (s *ResumeAnalyzerSkill) Descriptor() capability.Descriptor {
+	description := "分析简历文本，提取候选人的核心优势与建议"
+	tags := []string{"resume", "analysis", "skill"}
+	enabled := true
+
+	if s.def.Name != "" {
+		if s.def.Description != "" {
+			description = s.def.Description
+		}
+		if len(s.def.Tags) > 0 {
+			tags = s.def.Tags
+		}
+		enabled = s.def.Enabled
+	}
+
 	return capability.Descriptor{
 		Name:        "resume_analyzer",
 		Kind:        capability.KindSkill,
-		Description: "分析简历文本，提取候选人的核心优势与建议",
-		Tags:        []string{"resume", "analysis", "skill"},
+		Description: description,
+		Tags:        tags,
 		Version:     "v1",
-		Enabled:     true,
+		Enabled:     enabled,
 	}
 }
 
@@ -61,6 +78,7 @@ func (s *ResumeAnalyzerSkill) Invoke(_ context.Context, input map[string]any) (c
 		Output: map[string]any{
 			"capability_name": "resume_analyzer",
 			"kind":            "skill",
+			"skill_prompt":    s.def.Content,
 			"advantages":      advantages,
 			"suggestions":     suggestions,
 			"result":          "已完成简历分析",

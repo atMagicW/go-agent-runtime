@@ -7,6 +7,7 @@ import (
 
 	promptrepo "github.com/atMagicW/go-agent-runtime/internal/adapters/prompt"
 	openaiembedding "github.com/atMagicW/go-agent-runtime/internal/adapters/rag/openai_embedding"
+	"github.com/atMagicW/go-agent-runtime/internal/adapters/skillloader"
 	"github.com/atMagicW/go-agent-runtime/internal/domain/model"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -99,8 +100,17 @@ func main() {
 		fallbacks,
 	)
 
+	skillLoader := skillloader.NewFileLoader("skills")
+	skillDefs, err := skillLoader.Load()
+	if err != nil {
+		logger.Warn("load skills failed", zap.Error(err))
+		skillDefs = nil
+	}
+
+	skillRegistry := app.NewSkillRegistry(skillDefs)
+
 	mcpClient := mcpcap.NewClient()
-	registry := app.BuildCapabilityRegistry(capCfg, mcpClient)
+	registry := app.BuildCapabilityRegistry(capCfg, skillRegistry, mcpClient)
 
 	// 初始化 RAG
 	ragRepo := pgrag.NewRepository(db)
@@ -156,7 +166,7 @@ func main() {
 	}
 
 	promptService := app.NewPromptService(promptRepo)
-
+	skillService := app.NewSkillService(skillRegistry)
 	handler := httpapi.NewHandler(
 		agentService,
 		sessionService,
@@ -164,6 +174,7 @@ func main() {
 		ingestService,
 		promptService,
 		mcpService,
+		skillService,
 	)
 
 	router := gin.Default()

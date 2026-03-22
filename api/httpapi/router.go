@@ -10,6 +10,7 @@ type Handler struct {
 	ingestService     IngestService
 	promptService     PromptService
 	mcpService        MCPService
+	skillService      SkillService
 }
 
 // NewHandler 创建 HTTP Handler
@@ -20,6 +21,7 @@ func NewHandler(
 	ingestService IngestService,
 	promptService PromptService,
 	mcpService MCPService,
+	skillService SkillService,
 ) *Handler {
 	return &Handler{
 		agentService:      agentService,
@@ -28,6 +30,7 @@ func NewHandler(
 		ingestService:     ingestService,
 		promptService:     promptService,
 		mcpService:        mcpService,
+		skillService:      skillService,
 	}
 }
 
@@ -44,5 +47,6 @@ func RegisterRoutes(r *gin.Engine, h *Handler) {
 		v1.POST("/chat", h.ChatHandler)
 		v1.GET("/sessions/:id", h.GetSessionHandler)
 		v1.POST("/rag/ingest", h.IngestTextHandler)
+		v1.GET("/skills", h.ListSkillsHandler)
 	}
 }

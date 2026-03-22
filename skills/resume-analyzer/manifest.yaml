@@ -1,0 +1,10 @@
+name: "resume_analyzer"
+display_name: "Resume Analyzer"
+description: "分析简历文本，提取候选人的核心优势与优化建议"
+enabled: true
+entrypoint: "SKILL.md"
+kind: "skill"
+tags:
+  - resume
+  - analysis
+  - skill

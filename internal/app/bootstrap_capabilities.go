@@ -11,7 +11,11 @@ import (
 )
 
 // BuildCapabilityRegistry 从配置构建能力注册表
-func BuildCapabilityRegistry(capCfg *cfg.CapabilitiesConfig, mcpClient ports.MCPClient) *capregistry.Registry {
+func BuildCapabilityRegistry(
+	capCfg *cfg.CapabilitiesConfig,
+	skillRegistry *SkillRegistry,
+	mcpClient ports.MCPClient,
+) *capregistry.Registry {
 	registry := capregistry.NewRegistry()
 
 	if capCfg == nil {
@@ -22,9 +26,20 @@ func BuildCapabilityRegistry(capCfg *cfg.CapabilitiesConfig, mcpClient ports.MCP
 		if !item.Enabled {
 			continue
 		}
+
 		switch item.Name {
-		case "resume_analyzer":
-			registry.MustRegister(skills.NewResumeAnalyzerSkill())
+		case capability.CapabilityResumeAnalyzer:
+			def, ok := skillRegistry.Get(item.Name)
+			if !ok {
+				def = capability.SkillDefinition{
+					Name:        item.Name,
+					Description: "分析简历文本，提取候选人的优势、风险和优化建议",
+					Enabled:     true,
+					Kind:        "skill",
+					Tags:        []string{"resume", "analysis", "skill"},
+				}
+			}
+			registry.MustRegister(skills.NewResumeAnalyzerSkill(def))
 		}
 	}
 
@@ -32,8 +47,9 @@ func BuildCapabilityRegistry(capCfg *cfg.CapabilitiesConfig, mcpClient ports.MCP
 		if !item.Enabled {
 			continue
 		}
+
 		switch item.Name {
-		case "keyword_extract_tool":
+		case capability.CapabilityKeywordExtract:
 			registry.MustRegister(tools.NewKeywordExtractTool())
 		}
 	}

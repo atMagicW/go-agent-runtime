@@ -5,6 +5,7 @@ import (
 
 	"github.com/atMagicW/go-agent-runtime/internal/domain/agent"
 	"github.com/atMagicW/go-agent-runtime/internal/domain/capability"
+	domaincap "github.com/atMagicW/go-agent-runtime/internal/domain/capability"
 	domainprompt "github.com/atMagicW/go-agent-runtime/internal/domain/prompt"
 	"github.com/atMagicW/go-agent-runtime/internal/domain/rag"
 	cfg "github.com/atMagicW/go-agent-runtime/internal/pkg/config"
@@ -41,4 +42,9 @@ type PromptService interface {
 // MCPService 定义 MCP server 查询接口
 type MCPService interface {
 	ListServers() []cfg.MCPServerConfig
+}
+
+// SkillService 定义 Skill 查询接口
+type SkillService interface {
+	ListSkills() []domaincap.SkillDefinition
 }
