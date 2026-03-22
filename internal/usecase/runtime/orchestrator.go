@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/atMagicW/go-agent-runtime/internal/domain/agent"
+	"github.com/atMagicW/go-agent-runtime/internal/domain/prompt"
 	"github.com/atMagicW/go-agent-runtime/internal/ports"
 )
 
@@ -141,7 +142,7 @@ func (o *Orchestrator) RunWithEvents(
 	runtimeCtx.Intent = intentResult
 
 	if publisher != nil {
-		publisher.Publish("intent", string(intentResult.IntentType))
+		publisher.Publish(agent.EventIntent, string(intentResult.IntentType))
 	}
 
 	plan, err := o.planner.BuildPlan(ctx, runtimeCtx, message)
@@ -150,7 +151,7 @@ func (o *Orchestrator) RunWithEvents(
 	}
 
 	if publisher != nil {
-		publisher.Publish("plan", plan.PlanID)
+		publisher.Publish(agent.EventPlan, plan.PlanID)
 	}
 
 	// 如果 executor 支持事件版执行，则优先走事件版
@@ -210,7 +211,7 @@ func (o *Orchestrator) composeFinalResponse(
 			runtimeCtx,
 			ports.ComposeRequest{
 				Message:     message,
-				PromptName:  "final_response",
+				PromptName:  string(prompt.PromptFinalResponse),
 				StepResults: results,
 			},
 		)
@@ -358,7 +359,7 @@ func (e *PlanExecutor) ExecutePlanWithEvents(
 			if len(steps) == 1 {
 				step := steps[0]
 				if publisher != nil {
-					publisher.Publish("step_started", step.StepID)
+					publisher.Publish(agent.EventStepStarted, step.StepID)
 				}
 				result := e.executeStepWithEvents(ctx, runtimeCtx, step, completed, publisher)
 				completed[step.StepID] = result
@@ -366,9 +367,9 @@ func (e *PlanExecutor) ExecutePlanWithEvents(
 
 				if publisher != nil {
 					if result.Success {
-						publisher.Publish("step_completed", step.StepID)
+						publisher.Publish(agent.EventStepCompleted, step.StepID)
 					} else {
-						publisher.Publish("step_failed", step.StepID+":"+result.Error)
+						publisher.Publish(agent.EventStepFailed, step.StepID+":"+result.Error)
 					}
 				}
 				continue
@@ -384,16 +385,16 @@ func (e *PlanExecutor) ExecutePlanWithEvents(
 					defer wg.Done()
 
 					if publisher != nil {
-						publisher.Publish("step_started", s.StepID)
+						publisher.Publish(agent.EventStepStarted, s.StepID)
 					}
 
 					result := e.executeStepWithEvents(ctx, runtimeCtx, s, completed, publisher)
 
 					if publisher != nil {
 						if result.Success {
-							publisher.Publish("step_completed", s.StepID)
+							publisher.Publish(agent.EventStepCompleted, s.StepID)
 						} else {
-							publisher.Publish("step_failed", s.StepID+":"+result.Error)
+							publisher.Publish(agent.EventStepFailed, s.StepID+":"+result.Error)
 						}
 					}
 
@@ -496,16 +497,16 @@ func (e *PlanExecutor) executeStepWithEvents(
 	}
 
 	switch step.Executor {
-	case "rag_router":
+	case agent.ExecutorRAGRouter:
 		if publisher != nil {
 			if raw, ok := result.Output["evidences"]; ok {
-				publisher.Publish("retrieval", fmt.Sprintf("%v", raw))
+				publisher.Publish(agent.EventRetrieval, fmt.Sprintf("%v", raw))
 			}
 		}
-	case "capability_router":
+	case agent.ExecutorCapabilityRouter:
 		if publisher != nil {
 			if name, ok := result.Output["capability_name"].(string); ok {
-				publisher.Publish("tool_called", name)
+				publisher.Publish(agent.EventToolCalled, name)
 			}
 		}
 	}
@@ -536,7 +537,7 @@ func (e *PlanExecutor) executeStep(
 	}
 
 	switch step.Executor {
-	case "model_router":
+	case agent.ExecutorModelRouter:
 		resp, err := e.modelRouter.Generate(stepCtx, runtimeCtx, ports.ModelCallRequest{
 			TaskType: string(step.Type),
 			Model:    runtimeCtx.Request.Model,
@@ -574,7 +575,7 @@ func (e *PlanExecutor) executeStep(
 		}
 		return result
 
-	case "capability_router":
+	case agent.ExecutorCapabilityRouter:
 		name, _ := step.Input["name"].(string)
 
 		resp, err := e.capabilityRouter.Invoke(stepCtx, runtimeCtx, ports.CapabilityCallRequest{
@@ -593,7 +594,7 @@ func (e *PlanExecutor) executeStep(
 		result.EndedAt = time.Now()
 		return result
 
-	case "rag_router":
+	case agent.ExecutorRAGRouter:
 		query, _ := step.Input["query"].(string)
 		kb, _ := step.Input["kb"].(string)
 
@@ -621,12 +622,12 @@ func (e *PlanExecutor) executeStep(
 		}
 		result.EndedAt = time.Now()
 		return result
-	case "response_composer":
+	case agent.ExecutorResponseComposer:
 		message, _ := step.Input["message"].(string)
 
 		resp, err := e.responseComposer.Compose(stepCtx, runtimeCtx, ports.ComposeRequest{
 			Message:     message,
-			PromptName:  "final_response",
+			PromptName:  string(prompt.PromptFinalResponse),
 			StepResults: flattenCompletedResults(completed),
 		})
 		if err != nil {
@@ -647,7 +648,7 @@ func (e *PlanExecutor) executeStep(
 		return result
 	default:
 		result.Success = false
-		result.Error = "unknown executor: " + step.Executor
+		result.Error = string("unknown executor: " + step.Executor)
 		result.EndedAt = time.Now()
 		return result
 	}

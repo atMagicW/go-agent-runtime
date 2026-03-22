@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"github.com/atMagicW/go-agent-runtime/internal/domain/agent"
 	"github.com/atMagicW/go-agent-runtime/internal/ports"
 )
 
@@ -17,7 +18,7 @@ func NewSSEPublisher(writer *StreamWriter) *SSEPublisher {
 }
 
 // Publish 发布事件
-func (p *SSEPublisher) Publish(event string, data string) {
+func (p *SSEPublisher) Publish(event agent.EventName, data string) {
 	if p == nil || p.writer == nil {
 		return
 	}

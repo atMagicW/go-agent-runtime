@@ -7,11 +7,13 @@ import (
 
 	promptrepo "github.com/atMagicW/go-agent-runtime/internal/adapters/prompt"
 	openaiembedding "github.com/atMagicW/go-agent-runtime/internal/adapters/rag/openai_embedding"
+	"github.com/atMagicW/go-agent-runtime/internal/domain/model"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
 	"github.com/atMagicW/go-agent-runtime/api/httpapi"
 	mcpcap "github.com/atMagicW/go-agent-runtime/internal/adapters/capability/mcp"
+	deepseekadapter "github.com/atMagicW/go-agent-runtime/internal/adapters/llm/deepseek"
 	openaiadapter "github.com/atMagicW/go-agent-runtime/internal/adapters/llm/openai"
 	pgrepo "github.com/atMagicW/go-agent-runtime/internal/adapters/persistence/postgres"
 	mockembedding "github.com/atMagicW/go-agent-runtime/internal/adapters/rag/mock_embedding"
@@ -84,8 +86,10 @@ func main() {
 	mcpService := app.NewMCPService(capCfg)
 
 	openAIClient := openaiadapter.NewClient(appCfg.LLM.OpenAIAPIKey, pricingService)
+	deepSeekClient := deepseekadapter.NewClient(appCfg.LLM.DeepSeekAPIKey, appCfg.LLM.DeepSeekBaseURL, pricingService)
 	llmClients := map[string]ports.LLMClient{
-		"openai": openAIClient,
+		string(model.ProviderOpenAI):   openAIClient,
+		string(model.ProviderDeepSeek): deepSeekClient,
 	}
 
 	modelRouter := agentrouter.NewModelRouter(

@@ -45,7 +45,7 @@ type PlanStep struct {
 	ParallelGroup string `json:"parallel_group,omitempty"`
 
 	// 执行器名称，例如 model_router / rag_router / capability_router
-	Executor string `json:"executor"`
+	Executor ExecutorName `json:"executor"`
 
 	// 输入参数
 	Input map[string]any `json:"input,omitempty"`

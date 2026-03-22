@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/atMagicW/go-agent-runtime/internal/domain/capability"
 	"github.com/google/uuid"
 
 	"github.com/atMagicW/go-agent-runtime/internal/domain/agent"
@@ -39,8 +40,8 @@ func (p *Planner) BuildPlan(
 				StepID:      "step_retrieve",
 				Name:        "检索知识库",
 				Type:        agent.StepTypeRetrieve,
-				Executor:    "rag_router",
-				TimeoutMS:   5000,
+				Executor:    agent.ExecutorRAGRouter,
+				TimeoutMS:   agent.DefaultStepTimeoutMS,
 				RetryPolicy: agent.RetryPolicy{MaxRetries: 1},
 				Status:      agent.StepStatusPending,
 				Input: map[string]any{
@@ -53,9 +54,9 @@ func (p *Planner) BuildPlan(
 				StepID:      "step_compose",
 				Name:        "生成最终回答",
 				Type:        agent.StepTypeComposeResponse,
-				Executor:    "response_composer",
+				Executor:    agent.ExecutorResponseComposer,
 				DependsOn:   []string{"step_retrieve"},
-				TimeoutMS:   8000,
+				TimeoutMS:   agent.DefaultComposeTimeoutMS,
 				RetryPolicy: agent.RetryPolicy{MaxRetries: 1},
 				Status:      agent.StepStatusPending,
 				Input: map[string]any{
@@ -70,8 +71,8 @@ func (p *Planner) BuildPlan(
 				StepID:      "step_tool",
 				Name:        "调用能力",
 				Type:        agent.StepTypeTool,
-				Executor:    "capability_router",
-				TimeoutMS:   5000,
+				Executor:    agent.ExecutorCapabilityRouter,
+				TimeoutMS:   agent.DefaultStepTimeoutMS,
 				RetryPolicy: agent.RetryPolicy{MaxRetries: 2},
 				Status:      agent.StepStatusPending,
 				Input: map[string]any{
@@ -83,9 +84,9 @@ func (p *Planner) BuildPlan(
 				StepID:      "step_compose",
 				Name:        "生成最终回答",
 				Type:        agent.StepTypeComposeResponse,
-				Executor:    "response_composer",
+				Executor:    agent.ExecutorResponseComposer,
 				DependsOn:   []string{"step_tool"},
-				TimeoutMS:   8000,
+				TimeoutMS:   agent.DefaultComposeTimeoutMS,
 				RetryPolicy: agent.RetryPolicy{MaxRetries: 1},
 				Status:      agent.StepStatusPending,
 				Input: map[string]any{
@@ -100,9 +101,9 @@ func (p *Planner) BuildPlan(
 				StepID:        "step_retrieve_1",
 				Name:          "并发检索知识库A",
 				Type:          agent.StepTypeRetrieve,
-				Executor:      "rag_router",
+				Executor:      agent.ExecutorRAGRouter,
 				ParallelGroup: "group_retrieve",
-				TimeoutMS:     4000,
+				TimeoutMS:     agent.DefaultRagTimeoutMS,
 				RetryPolicy:   agent.RetryPolicy{MaxRetries: 1},
 				Status:        agent.StepStatusPending,
 				Input: map[string]any{
@@ -115,9 +116,9 @@ func (p *Planner) BuildPlan(
 				StepID:        "step_retrieve_2",
 				Name:          "并发检索知识库B",
 				Type:          agent.StepTypeRetrieve,
-				Executor:      "rag_router",
+				Executor:      agent.ExecutorRAGRouter,
 				ParallelGroup: "group_retrieve",
-				TimeoutMS:     4000,
+				TimeoutMS:     agent.DefaultRagTimeoutMS,
 				RetryPolicy:   agent.RetryPolicy{MaxRetries: 1},
 				Status:        agent.StepStatusPending,
 				Input: map[string]any{
@@ -130,9 +131,9 @@ func (p *Planner) BuildPlan(
 				StepID:      "step_tool",
 				Name:        "调用本地能力",
 				Type:        agent.StepTypeTool,
-				Executor:    "capability_router",
+				Executor:    agent.ExecutorCapabilityRouter,
 				DependsOn:   []string{"step_retrieve_1", "step_retrieve_2"},
-				TimeoutMS:   5000,
+				TimeoutMS:   agent.DefaultStepTimeoutMS,
 				RetryPolicy: agent.RetryPolicy{MaxRetries: 2},
 				Status:      agent.StepStatusPending,
 				Input: map[string]any{
@@ -144,9 +145,9 @@ func (p *Planner) BuildPlan(
 				StepID:      "step_compose",
 				Name:        "汇总生成结果",
 				Type:        agent.StepTypeComposeResponse,
-				Executor:    "response_composer",
+				Executor:    agent.ExecutorResponseComposer,
 				DependsOn:   []string{"step_tool"},
-				TimeoutMS:   10000,
+				TimeoutMS:   agent.DefaultLongStepTimeoutMS,
 				RetryPolicy: agent.RetryPolicy{MaxRetries: 1},
 				Status:      agent.StepStatusPending,
 				Input: map[string]any{
@@ -161,8 +162,8 @@ func (p *Planner) BuildPlan(
 				StepID:      "step_chat",
 				Name:        "直接生成回答",
 				Type:        agent.StepTypeLLMGenerate,
-				Executor:    "response_composer",
-				TimeoutMS:   8000,
+				Executor:    agent.ExecutorResponseComposer,
+				TimeoutMS:   agent.DefaultComposeTimeoutMS,
 				RetryPolicy: agent.RetryPolicy{MaxRetries: 1},
 				Status:      agent.StepStatusPending,
 				Input: map[string]any{
@@ -180,14 +181,14 @@ func pickCapabilityName(message string) string {
 
 	switch {
 	case strings.Contains(lower, "新闻"), strings.Contains(lower, "news"):
-		return "mcp_news_search"
+		return capability.CapabilityMCPNewsSearch
 	case strings.Contains(lower, "文档"), strings.Contains(lower, "doc"):
-		return "mcp_doc_lookup"
+		return capability.CapabilityMCPDocLookup
 	case strings.Contains(lower, "mcp"), strings.Contains(lower, "远程"), strings.Contains(lower, "搜索"):
-		return "mcp_web_search"
+		return capability.CapabilityMCPWebSearch
 	case strings.Contains(lower, "关键词"), strings.Contains(lower, "keyword"):
-		return "keyword_extract_tool"
+		return capability.CapabilityKeywordExtract
 	default:
-		return "resume_analyzer"
+		return capability.CapabilityResumeAnalyzer
 	}
 }

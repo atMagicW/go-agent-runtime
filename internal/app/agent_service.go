@@ -9,6 +9,7 @@ import (
 	memrepo "github.com/atMagicW/go-agent-runtime/internal/adapters/persistence/memory"
 	promptrepo "github.com/atMagicW/go-agent-runtime/internal/adapters/prompt"
 	"github.com/atMagicW/go-agent-runtime/internal/domain/agent"
+	"github.com/atMagicW/go-agent-runtime/internal/domain/prompt"
 	"github.com/atMagicW/go-agent-runtime/internal/domain/rag"
 	"github.com/atMagicW/go-agent-runtime/internal/ports"
 	agentgov "github.com/atMagicW/go-agent-runtime/internal/usecase/governance"
@@ -101,7 +102,7 @@ func (s *AgentService) Run(
 ) (*agent.FinalResponse, error) {
 	baseCtx := context.Background()
 
-	ctx, cancel := context.WithTimeout(baseCtx, 30*time.Second)
+	ctx, cancel := context.WithTimeout(baseCtx, time.Duration(agent.DefaultRequestTimeoutMS)*time.Millisecond)
 	defer cancel()
 
 	// 1. 确保会话存在
@@ -162,18 +163,18 @@ func (s *AgentService) RunStream(
 	defer cancel()
 
 	if err := s.sessionService.EnsureSession(ctx, reqCtx.SessionID, reqCtx.UserID); err != nil {
-		writer.WriteEvent("error", err.Error())
+		writer.WriteEvent(agent.EventError, err.Error())
 		return
 	}
 
 	if err := s.sessionService.SaveUserMessage(ctx, reqCtx.SessionID, message); err != nil {
-		writer.WriteEvent("error", err.Error())
+		writer.WriteEvent(agent.EventError, err.Error())
 		return
 	}
 
 	conversationState, err := s.sessionService.LoadConversationState(ctx, reqCtx.SessionID)
 	if err != nil {
-		writer.WriteEvent("error", err.Error())
+		writer.WriteEvent(agent.EventError, err.Error())
 		return
 	}
 
@@ -190,7 +191,7 @@ func (s *AgentService) RunStream(
 
 	intentResult, err := s.orchestratorIntentOnly(ctx, runtimeCtx, message)
 	if err != nil {
-		writer.WriteEvent("error", err.Error())
+		writer.WriteEvent(agent.EventError, err.Error())
 		return
 	}
 
@@ -200,47 +201,47 @@ func (s *AgentService) RunStream(
 
 		err := s.streamDirectModel(ctx, runtimeCtx, prompt, writer)
 		if err != nil {
-			writer.WriteEvent("error", err.Error())
+			writer.WriteEvent(agent.EventError, err.Error())
 			return
 		}
 
 		if err := s.sessionService.SaveAssistantMessage(ctx, reqCtx.SessionID, "[streamed response]"); err != nil {
-			writer.WriteEvent("error", err.Error())
+			writer.WriteEvent(agent.EventError, err.Error())
 			return
 		}
 
-		writer.WriteEvent("done", "completed")
+		writer.WriteEvent(agent.EventDone, "completed")
 		return
 	}
 
 	// workflow / rag / tool 使用事件版执行
 	resp, results, err := s.orchestrator.RunWithEvents(ctx, runtimeCtx, message, publisher)
 	if err != nil {
-		writer.WriteEvent("error", err.Error())
+		writer.WriteEvent(agent.EventError, err.Error())
 		return
 	}
 
 	// 先发一个标记，前端可切换成“最终回答中”
-	writer.WriteEvent("final_answer_start", "streaming")
+	writer.WriteEvent(agent.EventFinalAnswerStart, "streaming")
 
 	if err := s.streamWorkflowFinalAnswer(ctx, runtimeCtx, message, results, writer); err != nil {
 		// 如果流式最终回答失败，回退为一次性输出
-		writer.WriteEvent("final_answer_fallback", resp.Message)
+		writer.WriteEvent(agent.EventFinalAnswerFallback, resp.Message)
 		writer.WriteToken(resp.Message)
 	}
 
 	if err := s.sessionService.SaveAssistantMessage(ctx, reqCtx.SessionID, resp.Message); err != nil {
-		writer.WriteEvent("error", err.Error())
+		writer.WriteEvent(agent.EventError, err.Error())
 		return
 	}
 
 	conversationState.Variables = runtimeCtx.Variables
 	if err := s.sessionService.SaveConversationState(ctx, conversationState); err != nil {
-		writer.WriteEvent("error", err.Error())
+		writer.WriteEvent(agent.EventError, err.Error())
 		return
 	}
 
-	writer.WriteEvent("done", "completed")
+	writer.WriteEvent(agent.EventDone, "completed")
 }
 
 func (s *AgentService) orchestratorIntentOnly(
@@ -288,7 +289,7 @@ func (s *AgentService) streamWorkflowFinalAnswer(
 
 	prompt, err := s.responseComposer.BuildPrompt(ctx, runtimeCtx, ports.ComposeRequest{
 		Message:     message,
-		PromptName:  "final_response",
+		PromptName:  string(prompt.PromptFinalResponse),
 		StepResults: results,
 	})
 	if err != nil {

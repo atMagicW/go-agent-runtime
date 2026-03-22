@@ -95,9 +95,9 @@ func (r *InMemoryRepository) ListByName(
 func (r *InMemoryRepository) seed() {
 	now := time.Now()
 
-	r.templates["intent_classifier"] = []domainprompt.Template{
+	r.templates[string(domainprompt.PromptIntentClassifier)] = []domainprompt.Template{
 		{
-			PromptName: "intent_classifier",
+			PromptName: string(domainprompt.PromptIntentClassifier),
 			Version:    "v1",
 			Scene:      "intent",
 			Content:    "你是一个意图识别器。请根据用户输入识别意图类型。",
@@ -107,9 +107,9 @@ func (r *InMemoryRepository) seed() {
 		},
 	}
 
-	r.templates["final_response"] = []domainprompt.Template{
+	r.templates[string(domainprompt.PromptFinalResponse)] = []domainprompt.Template{
 		{
-			PromptName: "final_response",
+			PromptName: string(domainprompt.PromptFinalResponse),
 			Version:    "v1",
 			Scene:      "response",
 			Content:    "请根据用户请求和前序步骤结果生成最终回答。",
@@ -118,7 +118,7 @@ func (r *InMemoryRepository) seed() {
 			CreatedAt:  now,
 		},
 		{
-			PromptName: "final_response",
+			PromptName: string(domainprompt.PromptFinalResponse),
 			Version:    "v2",
 			Scene:      "response",
 			Content:    "请结合用户请求、知识库证据、工具结果，生成结构化且清晰的最终回答。",
