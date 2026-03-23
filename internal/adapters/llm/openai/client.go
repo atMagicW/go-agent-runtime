@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/atMagicW/go-agent-runtime/internal/domain/model"
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
 	"github.com/openai/openai-go/v3/responses"
@@ -96,7 +97,7 @@ func (c *Client) Generate(ctx context.Context, req ports.LLMGenerateRequest) (po
 		TotalTokens:      totalTokens,
 		Cost:             cost,
 		Model:            modelName,
-		Provider:         "openai",
+		Provider:         string(model.ProviderOpenAI),
 	}, nil
 }
 

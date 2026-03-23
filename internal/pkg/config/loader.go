@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/atMagicW/go-agent-runtime/internal/domain/model"
 	"gopkg.in/yaml.v3"
 )
 
@@ -117,7 +118,7 @@ func applyDefaults(cfg *Config) {
 	}
 
 	if cfg.RAG.EmbeddingProvider == "" {
-		cfg.RAG.EmbeddingProvider = "openai"
+		cfg.RAG.EmbeddingProvider = string(model.ProviderOpenAI)
 	}
 
 	if cfg.RAG.EmbeddingModel == "" {

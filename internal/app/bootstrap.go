@@ -17,6 +17,7 @@ import (
 	pgrag "github.com/atMagicW/go-agent-runtime/internal/adapters/rag/pgvector"
 	rerankadapter "github.com/atMagicW/go-agent-runtime/internal/adapters/rag/rerank"
 	"github.com/atMagicW/go-agent-runtime/internal/adapters/skillloader"
+	"github.com/atMagicW/go-agent-runtime/internal/domain/model"
 	"github.com/atMagicW/go-agent-runtime/internal/pkg/config"
 	"github.com/atMagicW/go-agent-runtime/internal/pkg/textsplitter"
 	"github.com/atMagicW/go-agent-runtime/internal/ports"
@@ -82,8 +83,8 @@ func Bootstrap(ctx context.Context, appCfg *config.Config) (*BootstrapResult, er
 	)
 
 	llmClients := map[string]ports.LLMClient{
-		"openai":   openAIClient,
-		"deepseek": deepSeekClient,
+		string(model.ProviderOpenAI):   openAIClient,
+		string(model.ProviderDeepSeek): deepSeekClient,
 	}
 
 	modelRouter := agentrouter.NewModelRouter(
@@ -203,7 +204,7 @@ func buildStorage(
 
 func buildEmbeddingProvider(appCfg *config.Config, pricingService *PricingService) ports.EmbeddingProvider {
 	switch appCfg.RAG.EmbeddingProvider {
-	case "openai":
+	case string(model.ProviderOpenAI):
 		return openaiembedding.NewProvider(
 			appCfg.LLM.OpenAIAPIKey,
 			appCfg.RAG.EmbeddingModel,

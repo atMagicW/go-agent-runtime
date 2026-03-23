@@ -3,6 +3,7 @@ package app
 import (
 	"testing"
 
+	"github.com/atMagicW/go-agent-runtime/internal/domain/model"
 	cfg "github.com/atMagicW/go-agent-runtime/internal/pkg/config"
 )
 
@@ -16,13 +17,13 @@ func TestModelRegistry_ResolveByTaskType(t *testing.T) {
 		Models: []cfg.ModelConfig{
 			{
 				Name:     "gpt-4.1",
-				Provider: "openai",
+				Provider: string(model.ProviderOpenAI),
 				Enabled:  true,
 				Tags:     []string{"analysis"},
 			},
 			{
 				Name:     "gpt-4.1-mini",
-				Provider: "openai",
+				Provider: string(model.ProviderOpenAI),
 				Enabled:  true,
 				Tags:     []string{"intent", "chat"},
 			},
@@ -45,7 +46,7 @@ func TestModelRegistry_DefaultModel(t *testing.T) {
 		Models: []cfg.ModelConfig{
 			{
 				Name:     "gpt-4.1-mini",
-				Provider: "openai",
+				Provider: string(model.ProviderOpenAI),
 				Enabled:  true,
 				Tags:     []string{"chat"},
 			},
