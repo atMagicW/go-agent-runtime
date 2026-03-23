@@ -15,6 +15,11 @@ type Config struct {
 		Port int    `yaml:"port"`
 	} `yaml:"app"`
 
+	Storage struct {
+		Mode    string `yaml:"mode"`
+		DataDir string `yaml:"data_dir"`
+	} `yaml:"storage"`
+
 	Database struct {
 		PostgresDSN string `yaml:"postgres_dsn"`
 	} `yaml:"database"`
@@ -32,6 +37,7 @@ type Config struct {
 		RerankEnabled     bool   `yaml:"rerank_enabled"`
 		EmbeddingProvider string `yaml:"embedding_provider"`
 		EmbeddingModel    string `yaml:"embedding_model"`
+		SeedOnBootstrap   bool   `yaml:"seed_on_bootstrap"`
 	} `yaml:"rag"`
 
 	TextSplitter struct {
@@ -60,6 +66,15 @@ func Load(path string) (*Config, error) {
 
 // applyEnvOverrides 使用环境变量覆盖配置
 func applyEnvOverrides(cfg *Config) {
+
+	if cfg.Storage.Mode == "" {
+		cfg.Storage.Mode = "file"
+	}
+
+	if cfg.Storage.DataDir == "" {
+		cfg.Storage.DataDir = "./data"
+	}
+
 	if v := os.Getenv("POSTGRES_DSN"); v != "" {
 		cfg.Database.PostgresDSN = v
 	}

@@ -3,6 +3,10 @@ app:
   env: local
   port: 8080
 
+storage:
+  mode: "memory" #memory/file/postgres
+  data_dir: "./data"
+
 database:
   postgres_dsn: "postgres://agent:agent@localhost:5432/agent_runtime?sslmode=disable"
 
@@ -16,8 +20,9 @@ rag:
   default_top_k: 5
   embedding_dim: 1536
   rerank_enabled: true
-  embedding_provider: "openai"
+  embedding_provider: "mock"
   embedding_model: "text-embedding-3-small"
+  seed_on_bootstrap: true
 
 text_splitter:
   chunk_size: 300

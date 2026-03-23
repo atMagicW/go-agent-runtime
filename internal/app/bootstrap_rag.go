@@ -3,7 +3,8 @@ package app
 import (
 	"context"
 
-	pgrag "github.com/atMagicW/go-agent-runtime/internal/adapters/rag/pgvector"
+	"github.com/google/uuid"
+
 	"github.com/atMagicW/go-agent-runtime/internal/domain/rag"
 	cfg "github.com/atMagicW/go-agent-runtime/internal/pkg/config"
 	"github.com/atMagicW/go-agent-runtime/internal/ports"
@@ -12,9 +13,10 @@ import (
 // InitKnowledgeBases 根据配置初始化知识库
 func InitKnowledgeBases(
 	ctx context.Context,
-	repo *pgrag.Repository,
+	repo ports.RAGRepository,
 	embedding ports.EmbeddingProvider,
 	cfgs *cfg.KnowledgeBasesConfig,
+	seedOnBootstrap bool,
 ) error {
 	if cfgs == nil {
 		return nil
@@ -36,11 +38,61 @@ func InitKnowledgeBases(
 			return err
 		}
 
-		if item.SeedDemoData {
-			if err := pgrag.SeedDemoKnowledgeBase(ctx, repo, embedding, item.KBID); err != nil {
-				// demo seed 失败不阻断主流程时，你也可以改成 continue
+		if seedOnBootstrap && item.SeedDemoData {
+			if err := seedDemoKnowledgeBase(ctx, repo, embedding, item.KBID); err != nil {
 				return err
 			}
+		}
+	}
+
+	return nil
+}
+
+// seedDemoKnowledgeBase 写入演示数据
+func seedDemoKnowledgeBase(
+	ctx context.Context,
+	repo ports.RAGRepository,
+	embedding ports.EmbeddingProvider,
+	kbID string,
+) error {
+	docID := uuid.New().String()
+
+	doc := rag.Document{
+		DocID:  docID,
+		KBID:   kbID,
+		Title:  "Go Agent Runtime Intro",
+		Source: "demo",
+		Metadata: map[string]any{
+			"category": "architecture",
+		},
+	}
+
+	if err := repo.InsertDocument(ctx, doc); err != nil {
+		return err
+	}
+
+	chunks := []string{
+		"Go agent runtime supports intent recognition, planning, model routing and capability dispatch.",
+		"RAG routing can select different knowledge bases based on intent and context relevance.",
+		"Capability registry can unify local skill, local tool and remote MCP tool under one runtime.",
+	}
+
+	for _, content := range chunks {
+		vec, err := embedding.Embed(ctx, content)
+		if err != nil {
+			return err
+		}
+
+		err = repo.InsertChunk(ctx, rag.Chunk{
+			ChunkID:   uuid.New().String(),
+			DocID:     docID,
+			KBID:      kbID,
+			Content:   content,
+			Metadata:  map[string]any{"seed": true},
+			Embedding: vec,
+		})
+		if err != nil {
+			return err
 		}
 	}
 
