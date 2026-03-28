@@ -25,6 +25,10 @@ type MCPToolConfig struct {
 type MCPServerConfig struct {
 	Name        string          `yaml:"name"`
 	Description string          `yaml:"description"`
+	Mode        string          `yaml:"mode"`
+	BaseURL     string          `yaml:"base_url"`
+	ToolPath    string          `yaml:"tool_path"`
+	TimeoutMS   int             `yaml:"timeout_ms"`
 	Enabled     bool            `yaml:"enabled"`
 	Tools       []MCPToolConfig `yaml:"tools"`
 }

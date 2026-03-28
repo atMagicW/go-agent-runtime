@@ -6,8 +6,6 @@ import (
 	"time"
 
 	"github.com/atMagicW/go-agent-runtime/api/httpapi"
-	memrepo "github.com/atMagicW/go-agent-runtime/internal/adapters/persistence/memory"
-	promptrepo "github.com/atMagicW/go-agent-runtime/internal/adapters/prompt"
 	"github.com/atMagicW/go-agent-runtime/internal/domain/agent"
 	"github.com/atMagicW/go-agent-runtime/internal/domain/prompt"
 	"github.com/atMagicW/go-agent-runtime/internal/domain/rag"
@@ -24,6 +22,7 @@ import (
 type AgentService struct {
 	orchestrator     *agentruntime.Orchestrator
 	sessionService   *SessionService
+	intentEngine     ports.IntentEngine
 	modelRouter      ports.ModelRouter
 	responseComposer ports.ResponseComposer
 }
@@ -42,6 +41,9 @@ func NewAgentService(
 	modelRouter *agentrouter.ModelRouter,
 	registry capabilityRegistry,
 	ragService ragSearchService,
+	promptRepository ports.PromptRepository,
+	modelUsageRepo ports.ModelUsageRepository,
+	auditRepo ports.AuditRepository,
 	breakers *agentgov.BreakerRegistry,
 	fallbacks *agentgov.FallbackPolicy,
 ) *AgentService {
@@ -55,17 +57,6 @@ func NewAgentService(
 
 	capabilityRouter := agentrouter.NewCapabilityRouter(registry, breakers, fallbacks)
 	ragRouter := agentrouter.NewRAGRouter(ragService, breakers, fallbacks)
-
-	modelUsageRepo := memrepo.NewModelUsageRepository()
-	auditRepo := memrepo.NewAuditRepository()
-
-	var promptRepository ports.PromptRepository
-	fileRepo, err := promptrepo.NewFileRepository("prompts")
-	if err != nil {
-		promptRepository = promptrepo.NewInMemoryRepository()
-	} else {
-		promptRepository = fileRepo
-	}
 
 	costTracker := agentgov.NewCostTracker(modelUsageRepo)
 	auditLogger := agentgov.NewAuditLogger(auditRepo)
@@ -90,6 +81,7 @@ func NewAgentService(
 	return &AgentService{
 		orchestrator:     orchestrator,
 		sessionService:   sessionService,
+		intentEngine:     intentEngine,
 		modelRouter:      modelRouter,
 		responseComposer: responseComposer,
 	}
@@ -249,11 +241,7 @@ func (s *AgentService) orchestratorIntentOnly(
 	runtimeCtx agent.RuntimeContext,
 	message string,
 ) (agent.IntentResult, error) {
-	// 为了不改动太多 orchestrator 结构，
-	// 第一版在这里直接复用 intent engine 的同等能力逻辑即可。
-	// 更彻底的做法是把 intent engine 暴露到 service 层。
-	intentEngine := agentintent.NewEngine()
-	return intentEngine.Recognize(ctx, runtimeCtx, message)
+	return s.intentEngine.Recognize(ctx, runtimeCtx, message)
 }
 
 func (s *AgentService) streamDirectModel(

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 
+	mcpcap "github.com/atMagicW/go-agent-runtime/internal/adapters/capability/mcp"
 	deepseekadapter "github.com/atMagicW/go-agent-runtime/internal/adapters/llm/deepseek"
 	openaiadapter "github.com/atMagicW/go-agent-runtime/internal/adapters/llm/openai"
 	filerepo "github.com/atMagicW/go-agent-runtime/internal/adapters/persistence/file"
@@ -113,7 +114,7 @@ func Bootstrap(ctx context.Context, appCfg *config.Config) (*BootstrapResult, er
 	skillRegistry := NewSkillRegistry(skillDefs)
 
 	// mcp
-	mcpClient := buildMCPClient()
+	mcpClient := buildMCPClient(capCfg)
 
 	// capability registry
 	registry := BuildCapabilityRegistry(capCfg, skillRegistry, mcpClient)
@@ -132,11 +133,17 @@ func Bootstrap(ctx context.Context, appCfg *config.Config) (*BootstrapResult, er
 		pRepo = filePromptRepo
 	}
 
+	modelUsageRepo := memrepo.NewModelUsageRepository()
+	auditRepo := memrepo.NewAuditRepository()
+
 	agentService := NewAgentService(
 		sessionService,
 		modelRouter,
 		registry,
 		ragService,
+		pRepo,
+		modelUsageRepo,
+		auditRepo,
 		breakers,
 		fallbacks,
 	)
@@ -216,20 +223,9 @@ func buildEmbeddingProvider(appCfg *config.Config, pricingService *PricingServic
 	}
 }
 
-func buildMCPClient() ports.MCPClient {
-	// 先复用你现有的 mock / adapter 实现
-	return &noopMCPClient{}
-}
-
-type noopMCPClient struct{}
-
-func (n *noopMCPClient) CallTool(ctx context.Context, req ports.MCPCallRequest) (ports.MCPCallResponse, error) {
-	_ = ctx
-	return ports.MCPCallResponse{
-		Output: map[string]any{
-			"server_name": req.ServerName,
-			"tool_name":   req.ToolName,
-			"result":      "mock mcp call success",
-		},
-	}, nil
+func buildMCPClient(capCfg *config.CapabilitiesConfig) ports.MCPClient {
+	if capCfg == nil {
+		return mcpcap.NewClient(nil)
+	}
+	return mcpcap.NewClient(capCfg.MCPServers)
 }

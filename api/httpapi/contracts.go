@@ -4,11 +4,9 @@ import (
 	"context"
 
 	"github.com/atMagicW/go-agent-runtime/internal/domain/agent"
-	"github.com/atMagicW/go-agent-runtime/internal/domain/capability"
 	domaincap "github.com/atMagicW/go-agent-runtime/internal/domain/capability"
 	domainprompt "github.com/atMagicW/go-agent-runtime/internal/domain/prompt"
 	"github.com/atMagicW/go-agent-runtime/internal/domain/rag"
-	cfg "github.com/atMagicW/go-agent-runtime/internal/pkg/config"
 )
 
 // AgentService 定义 HTTP 层需要的 Agent 服务能力
@@ -23,9 +21,21 @@ type SessionService interface {
 	GetSession(ctx context.Context, sessionID string) (agent.Session, error)
 }
 
+type CapabilityView struct {
+	Name        string   `json:"name"`
+	Kind        string   `json:"kind"`
+	Description string   `json:"description"`
+	Tags        []string `json:"tags,omitempty"`
+	Version     string   `json:"version,omitempty"`
+	Enabled     bool     `json:"enabled"`
+	Source      string   `json:"source"`
+	ServerName  string   `json:"server_name,omitempty"`
+	RemoteTool  string   `json:"remote_tool,omitempty"`
+}
+
 // CapabilityService 定义能力列表查询接口
 type CapabilityService interface {
-	ListCapabilities() []capability.Descriptor
+	ListCapabilities() []CapabilityView
 }
 
 // IngestService 定义知识库写入接口
@@ -39,9 +49,27 @@ type PromptService interface {
 	ListVersions(ctx context.Context, promptName string) ([]domainprompt.Template, error)
 }
 
+type MCPToolView struct {
+	Name        string `json:"name"`
+	RemoteTool  string `json:"remote_tool"`
+	Description string `json:"description"`
+	Enabled     bool   `json:"enabled"`
+}
+
+type MCPServerView struct {
+	Name        string        `json:"name"`
+	Description string        `json:"description"`
+	Mode        string        `json:"mode"`
+	BaseURL     string        `json:"base_url,omitempty"`
+	ToolPath    string        `json:"tool_path,omitempty"`
+	TimeoutMS   int           `json:"timeout_ms,omitempty"`
+	Enabled     bool          `json:"enabled"`
+	Tools       []MCPToolView `json:"tools"`
+}
+
 // MCPService 定义 MCP server 查询接口
 type MCPService interface {
-	ListServers() []cfg.MCPServerConfig
+	ListServers() []MCPServerView
 }
 
 // SkillService 定义 Skill 查询接口

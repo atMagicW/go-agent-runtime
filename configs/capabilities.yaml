@@ -8,6 +8,7 @@ tools:
 
 mcp_servers:
   - name: "search-server"
+    mode: "mock"
     enabled: true
     description: "远程搜索服务"
     tools:
@@ -22,6 +23,7 @@ mcp_servers:
         enabled: false
 
   - name: "docs-server"
+    mode: "mock"
     enabled: true
     description: "远程文档查询服务"
     tools:

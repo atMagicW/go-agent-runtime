@@ -14,6 +14,12 @@ type Engine struct {
 
 // NewEngine 创建默认意图识别器
 func NewEngine(classifiers ...ports.IntentClassifier) *Engine {
+	if len(classifiers) == 0 {
+		classifiers = []ports.IntentClassifier{
+			NewRuleClassifier(),
+		}
+	}
+
 	return &Engine{
 		classifiers: classifiers,
 	}
